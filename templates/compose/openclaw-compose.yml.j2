@@ -1,22 +1,71 @@
 services:
 
-  openclaw:
+  openclaw-gateway:
 
-    image: {{ image }}
+    image: ${OPENCLAW_IMAGE}
 
-    container_name: openclaw-{{ name }}
+    container_name: oces-{{ name }}
 
     restart: unless-stopped
+
+    init: true
 
     env_file:
       - .env
 
+    environment:
+
+      HOME: /home/node
+
+      OPENCLAW_HOME: /home/node
+
+      TERM: xterm-256color
+
+      OPENCLAW_STATE_DIR: /home/node/.openclaw
+
+      OPENCLAW_CONFIG_PATH: /home/node/.openclaw/openclaw.json
+
+      OPENCLAW_CONFIG_DIR: /home/node/.openclaw
+
+      OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
+
+      TZ: ${OPENCLAW_TZ}
+
+    command:
+      - node
+      - dist/index.js
+      - gateway
+      - --bind
+      - lan
+      - --port
+      - "18789"
+
+    security_opt:
+      - no-new-privileges:true
+
+    cap_drop:
+      - NET_ADMIN
+      - NET_RAW
+
+    extra_hosts:
+      - host.docker.internal:host-gateway
+
     networks:
       - oces_proxy
+
+    volumes:
+
+      - ./data/.openclaw:/home/node/.openclaw
+
+      - ./data/workspace:/home/node/.openclaw/workspace
+
+      - ./data/auth:/home/node/.config/openclaw
 
     labels:
 
       - traefik.enable=true
+
+      - traefik.docker.network=oces_proxy
 
       - traefik.http.routers.{{ name }}.rule=Host(`{{ domain }}`)
 
@@ -24,11 +73,25 @@ services:
 
       - traefik.http.routers.{{ name }}.tls.certresolver=letsencrypt
 
-      - traefik.http.services.{{ name }}.loadbalancer.server.port={{ internal_port }}
+      - traefik.http.services.{{ name }}.loadbalancer.server.port=18789
 
-    volumes:
+    healthcheck:
 
-      - ./workspace:/app/workspace
+      test:
+        [
+          "CMD",
+          "node",
+          "-e",
+          "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+
+      interval: 30s
+
+      timeout: 5s
+
+      retries: 5
+
+      start_period: 20s
 
 networks:
 

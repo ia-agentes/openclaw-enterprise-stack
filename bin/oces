@@ -1,0 +1,77 @@
+#!/usr/bin/env bash
+
+SCRIPT="$(readlink -f "$0")"
+ROOT="$(cd "$(dirname "$SCRIPT")/.." && pwd)"
+
+case "$1" in
+
+deploy)
+    bash "$ROOT/scripts/deploy.sh"
+;;
+
+update)
+    bash "$ROOT/scripts/update.sh"
+;;
+
+backup)
+    bash "$ROOT/scripts/backup.sh"
+;;
+
+restore)
+    bash "$ROOT/scripts/restore.sh"
+;;
+
+restart)
+    bash "$ROOT/scripts/restart.sh"
+;;
+
+status)
+    bash "$ROOT/scripts/status.sh"
+;;
+
+logs)
+    bash "$ROOT/scripts/logs.sh"
+;;
+
+health)
+    bash "$ROOT/scripts/healthcheck.sh"
+;;
+
+doctor)
+    bash "$ROOT/scripts/doctor.sh"
+;;
+
+generate)
+    python3 "$ROOT/scripts/generate.py"
+;;
+
+*)
+echo
+
+echo "OpenClaw Enterprise Stack"
+
+echo
+
+echo "Comandos:"
+
+echo " oces generate"
+
+echo " oces deploy"
+
+echo " oces update"
+
+echo " oces backup"
+
+echo " oces restore"
+
+echo " oces restart"
+
+echo " oces status"
+
+echo " oces logs"
+
+echo " oces health"
+
+;;
+
+esac

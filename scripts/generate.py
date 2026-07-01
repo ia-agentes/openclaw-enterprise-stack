@@ -4,39 +4,72 @@ from jinja2 import Environment, FileSystemLoader
 
 ROOT = Path(__file__).resolve().parent.parent
 
-cfg = yaml.safe_load((ROOT / "config" / "stack.yml").read_text())
+stack = yaml.safe_load(
+    (ROOT / "config" / "stack.yml").read_text()
+)
+
+defaults = yaml.safe_load(
+    (ROOT / "config" / "defaults.yml").read_text()
+)
 
 env = Environment(
     loader=FileSystemLoader(ROOT / "templates")
 )
 
-compose_tpl = env.get_template("compose/openclaw-compose.yml.j2")
-env_tpl = env.get_template("env/.env.j2")
+compose_template = env.get_template(
+    "compose/openclaw-compose.yml.j2"
+)
 
-image = "ghcr.io/openclaw/openclaw:latest"
+env_template = env.get_template(
+    "env/.env.j2"
+)
 
-for name, item in cfg["instances"].items():
+instances_root = ROOT / "instances"
 
-    target = ROOT / "instances" / name
+instances_root.mkdir(exist_ok=True)
 
-    target.mkdir(parents=True, exist_ok=True)
+for instance_name, cfg in stack["instances"].items():
 
-    (target / "workspace").mkdir(exist_ok=True)
+    instance_dir = instances_root / instance_name
 
-    compose = compose_tpl.render(
-        name=name,
-        domain=item["domain"],
-        internal_port=3000,
-        image=image
+    (instance_dir / "data").mkdir(parents=True, exist_ok=True)
+    (instance_dir / "data" / ".openclaw").mkdir(exist_ok=True)
+    (instance_dir / "data" / "workspace").mkdir(exist_ok=True)
+    (instance_dir / "data" / "auth").mkdir(exist_ok=True)
+
+    compose = compose_template.render(
+    name=instance_name,
+    domain=cfg["domain"],
+    image=defaults["image"],
+    network=defaults["network"],
+    gateway_port=defaults["gateway_port"],
+    bridge_port=defaults["bridge_port"],
+    msteams_port=defaults["msteams_port"],
+    restart=defaults["restart"],
     )
 
-    (target / "docker-compose.yml").write_text(compose)
+    (instance_dir / "docker-compose.yml").write_text(compose)
 
-    envfile = env_tpl.render(
-        timezone=cfg["server"]["timezone"],
-        internal_port=3000
+    envfile = env_template.render(
+        image=defaults["image"],
+        timezone=stack["server"]["timezone"],
+        gateway_port=defaults["gateway_port"],
+        bridge_port=defaults["bridge_port"],
+        msteams_port=defaults["msteams_port"],
     )
 
-    (target / ".env").write_text(envfile)
+    (instance_dir / ".env").write_text(envfile)
 
-print("Instâncias geradas com sucesso.")
+print()
+print("=" * 50)
+print("OpenClaw Enterprise Stack")
+print("=" * 50)
+print()
+
+print(f"{len(stack['instances'])} instâncias geradas.")
+print()
+
+for item in stack["instances"]:
+    print("✔", item)
+
+print()

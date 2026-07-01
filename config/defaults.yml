@@ -1,0 +1,11 @@
+image: ghcr.io/openclaw/openclaw:latest
+
+gateway_port: 18789
+
+bridge_port: 18790
+
+msteams_port: 3978
+
+network: oces_proxy
+
+restart: unless-stopped
