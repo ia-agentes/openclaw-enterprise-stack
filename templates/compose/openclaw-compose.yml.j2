@@ -1,0 +1,37 @@
+services:
+
+  openclaw:
+
+    image: {{ image }}
+
+    container_name: openclaw-{{ name }}
+
+    restart: unless-stopped
+
+    env_file:
+      - .env
+
+    networks:
+      - oces_proxy
+
+    labels:
+
+      - traefik.enable=true
+
+      - traefik.http.routers.{{ name }}.rule=Host(`{{ domain }}`)
+
+      - traefik.http.routers.{{ name }}.entrypoints=websecure
+
+      - traefik.http.routers.{{ name }}.tls.certresolver=letsencrypt
+
+      - traefik.http.services.{{ name }}.loadbalancer.server.port={{ internal_port }}
+
+    volumes:
+
+      - ./workspace:/app/workspace
+
+networks:
+
+  oces_proxy:
+
+    external: true

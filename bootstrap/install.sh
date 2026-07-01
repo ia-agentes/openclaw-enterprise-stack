@@ -8,6 +8,11 @@ echo "====================================="
 bash bootstrap/check.sh
 bash bootstrap/directories.sh
 bash bootstrap/docker.sh
+
+python3 -m pip install -r requirements.txt
+
+python3 scripts/generate.py
+
 bash bootstrap/traefik.sh
 
 echo
