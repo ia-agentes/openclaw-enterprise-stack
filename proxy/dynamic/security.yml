@@ -1,0 +1,19 @@
+http:
+
+  middlewares:
+
+    security:
+
+      headers:
+
+        browserXssFilter: true
+        contentTypeNosniff: true
+        frameDeny: true
+        forceSTSHeader: true
+        stsIncludeSubdomains: true
+        stsPreload: true
+        stsSeconds: 31536000
+
+    gzip:
+
+      compress: {}
