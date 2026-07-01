@@ -1,0 +1,33 @@
+company:
+  name: Colegio Santo Anjo
+
+server:
+  timezone: America/Sao_Paulo
+
+ssl:
+  email: admin@colegiosantoanjo.tech
+
+proxy:
+  network: oces_proxy
+
+instances:
+
+  te:
+    domain: te.colegiosantoanjo.tech
+    port: 3001
+
+  academico:
+    domain: academico.colegiosantoanjo.tech
+    port: 3002
+
+  dp:
+    domain: dp.colegiosantoanjo.tech
+    port: 3003
+
+  adm:
+    domain: adm.colegiosantoanjo.tech
+    port: 3004
+
+  paulo:
+    domain: paulo.colegiosantoanjo.tech
+    port: 3005
