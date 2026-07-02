@@ -216,6 +216,7 @@ for instance_name, cfg in stack["instances"].items():
         read_env_value(env_path, "OPENCLAW_GATEWAY_TOKEN")
         or secrets.token_urlsafe(48)
     )
+    openai_api_key = read_env_value(env_path, "OPENAI_API_KEY") or ""
 
     envfile = env_template.render(
         name=instance_name,
@@ -225,6 +226,7 @@ for instance_name, cfg in stack["instances"].items():
         bridge_port=defaults["bridge_port"],
         msteams_port=defaults["msteams_port"],
         gateway_token=gateway_token,
+        openai_api_key=openai_api_key,
     )
 
     write_text_lf(env_path, envfile)
