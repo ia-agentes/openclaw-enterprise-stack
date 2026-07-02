@@ -2,6 +2,9 @@
   "gateway": {
     "mode": "local",
     "bind": "lan",
+    "trustedProxies": [
+      "{{ trusted_proxy_ip }}"
+    ],
     "auth": {
       "mode": "token",
       "token": "${OPENCLAW_GATEWAY_TOKEN}"

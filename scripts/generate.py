@@ -1,3 +1,5 @@
+import ipaddress
+import json
 from pathlib import Path
 import secrets
 import sys
@@ -56,6 +58,26 @@ if "instances" not in stack or not isinstance(stack["instances"], dict) or not s
 
 timezone = stack.get("server", {}).get("timezone", "UTC")
 network = stack.get("proxy", {}).get("network", defaults["network"])
+proxy_subnet_raw = stack.get("proxy", {}).get("subnet")
+trusted_proxy_ip_raw = stack.get("proxy", {}).get("trusted_ip")
+if not proxy_subnet_raw or not trusted_proxy_ip_raw:
+    sys.exit("config/stack.yml precisa declarar proxy.subnet e proxy.trusted_ip.")
+
+try:
+    proxy_subnet = ipaddress.ip_network(proxy_subnet_raw)
+    trusted_proxy_ip = ipaddress.ip_address(trusted_proxy_ip_raw)
+except ValueError as error:
+    sys.exit(f"Configuração de rede do proxy inválida: {error}")
+
+if proxy_subnet.version != 4 or trusted_proxy_ip.version != 4:
+    sys.exit("proxy.subnet e proxy.trusted_ip precisam usar IPv4.")
+
+if trusted_proxy_ip not in proxy_subnet:
+    sys.exit("proxy.trusted_ip precisa pertencer a proxy.subnet.")
+
+if trusted_proxy_ip in (proxy_subnet.network_address, proxy_subnet.broadcast_address):
+    sys.exit("proxy.trusted_ip não pode ser o endereço de rede ou broadcast.")
+
 ssl_email = stack.get("ssl", {}).get("email")
 if not ssl_email:
     sys.exit("config/stack.yml precisa declarar ssl.email para o Let's Encrypt.")
@@ -81,10 +103,61 @@ def write_text_lf(path, content):
         handle.write(content)
 
 
+def write_openclaw_config(path, domain, port):
+    if not path.exists():
+        write_text_lf(
+            path,
+            openclaw_config_template.render(
+                domain=domain,
+                port=port,
+                trusted_proxy_ip=trusted_proxy_ip,
+            ),
+        )
+        return
+
+    try:
+        config = json.loads(path.read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, OSError) as error:
+        sys.exit(f"Configuração OpenClaw inválida em {path}: {error}")
+
+    if not isinstance(config, dict):
+        sys.exit(f"Configuração OpenClaw precisa ser um objeto JSON: {path}")
+
+    gateway = config.setdefault("gateway", {})
+    if not isinstance(gateway, dict):
+        sys.exit(f"gateway precisa ser um objeto JSON: {path}")
+
+    gateway["trustedProxies"] = [str(trusted_proxy_ip)]
+
+    control_ui = gateway.setdefault("controlUi", {})
+    if not isinstance(control_ui, dict):
+        sys.exit(f"gateway.controlUi precisa ser um objeto JSON: {path}")
+
+    existing_origins = control_ui.get("allowedOrigins", [])
+    if not isinstance(existing_origins, list) or not all(
+        isinstance(origin, str) for origin in existing_origins
+    ):
+        sys.exit(f"gateway.controlUi.allowedOrigins precisa ser uma lista: {path}")
+
+    required_origins = [
+        f"https://{domain}",
+        f"http://127.0.0.1:{port}",
+        f"http://localhost:{port}",
+    ]
+    control_ui["allowedOrigins"] = list(
+        dict.fromkeys(required_origins + existing_origins)
+    )
+
+    write_text_lf(path, json.dumps(config, indent=2) + "\n")
+
+
 (ROOT / "proxy" / "config").mkdir(parents=True, exist_ok=True)
 write_text_lf(
     ROOT / "proxy" / "docker-compose.yml",
-    proxy_compose_template.render(network=network),
+    proxy_compose_template.render(
+        network=network,
+        trusted_proxy_ip=trusted_proxy_ip,
+    ),
 )
 write_text_lf(
     ROOT / "proxy" / "config" / "traefik.yml",
@@ -118,14 +191,11 @@ for instance_name, cfg in stack["instances"].items():
     (instance_dir / "data" / "auth").mkdir(exist_ok=True)
 
     openclaw_config_path = instance_dir / "data" / ".openclaw" / "openclaw.json"
-    if not openclaw_config_path.exists():
-        write_text_lf(
-            openclaw_config_path,
-            openclaw_config_template.render(
-                domain=cfg["domain"],
-                port=cfg["port"],
-            ),
-        )
+    write_openclaw_config(
+        openclaw_config_path,
+        domain=cfg["domain"],
+        port=cfg["port"],
+    )
 
     compose = compose_template.render(
         name=instance_name,

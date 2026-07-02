@@ -9,6 +9,8 @@ ssl:
 
 proxy:
   network: oces_proxy
+  subnet: 172.18.0.0/16
+  trusted_ip: 172.18.0.2
 
 instances:
 

@@ -19,7 +19,8 @@ services:
       - "443:443"
 
     networks:
-      - {{ network }}
+      {{ network }}:
+        ipv4_address: {{ trusted_proxy_ip }}
 
     command:
       - --configFile=/etc/traefik/traefik.yml

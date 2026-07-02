@@ -19,7 +19,8 @@ services:
       - "443:443"
 
     networks:
-      - oces_proxy
+      oces_proxy:
+        ipv4_address: 172.18.0.2
 
     command:
       - --configFile=/etc/traefik/traefik.yml
