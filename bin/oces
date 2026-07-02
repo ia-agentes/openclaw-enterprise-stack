@@ -48,6 +48,11 @@ generate)
     python3 "$ROOT/scripts/generate.py"
 ;;
 
+devices)
+    shift
+    bash "$ROOT/scripts/devices.sh" "$@"
+;;
+
 *)
 echo
 
@@ -74,6 +79,10 @@ echo " oces status"
 echo " oces logs"
 
 echo " oces health"
+
+echo " oces devices list"
+
+echo " oces devices approve [--yes]"
 
 ;;
 
