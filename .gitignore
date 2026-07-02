@@ -1,5 +1,6 @@
 .env
 .env.*
+!templates/env/.env.j2
 *.log
 __pycache__/
 *.pyc

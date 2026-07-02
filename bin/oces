@@ -10,31 +10,34 @@ deploy)
 ;;
 
 update)
-    bash "$ROOT/scripts/update.sh"
+    echo "Comando ainda não implementado neste repositório: update" >&2
+    exit 2
 ;;
 
 backup)
-    bash "$ROOT/scripts/backup.sh"
+    echo "Comando ainda não implementado neste repositório: backup" >&2
+    exit 2
 ;;
 
 restore)
-    bash "$ROOT/scripts/restore.sh"
+    echo "Comando ainda não implementado neste repositório: restore" >&2
+    exit 2
 ;;
 
 restart)
-    bash "$ROOT/scripts/restart.sh"
+    docker compose -f "$ROOT/proxy/docker-compose.yml" up -d
 ;;
 
 status)
-    bash "$ROOT/scripts/status.sh"
+    docker ps --filter "name=oces-" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
 ;;
 
 logs)
-    bash "$ROOT/scripts/logs.sh"
+    docker logs -f oces-traefik
 ;;
 
 health)
-    bash "$ROOT/scripts/healthcheck.sh"
+    bash "$ROOT/scripts/doctor.sh"
 ;;
 
 doctor)

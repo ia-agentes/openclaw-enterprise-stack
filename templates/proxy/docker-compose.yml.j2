@@ -19,7 +19,7 @@ services:
       - "443:443"
 
     networks:
-      - oces_proxy
+      - {{ network }}
 
     command:
       - --configFile=/etc/traefik/traefik.yml
@@ -32,5 +32,5 @@ services:
       - ./logs:/logs
 
 networks:
-  oces_proxy:
+  {{ network }}:
     external: true

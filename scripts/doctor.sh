@@ -27,11 +27,28 @@ fi
 
 echo
 echo "Python:"
-python3 --version
+if command -v python3 >/dev/null 2>&1; then
+    python3 --version
+    if python3 - <<'PY' >/dev/null 2>&1
+import jinja2
+import yaml
+PY
+    then
+        echo "[OK] Dependências Python"
+    else
+        echo "❌ Dependências Python ausentes. Rode: python3 -m pip install -r requirements.txt"
+    fi
+else
+    echo "❌ Python 3 não instalado"
+fi
 
 echo
 echo "Instâncias configuradas:"
-find instances -mindepth 1 -maxdepth 1 -type d | wc -l
+if [ -d instances ]; then
+    find instances -mindepth 1 -maxdepth 1 -type d | wc -l
+else
+    echo "0 (rode: python3 scripts/generate.py)"
+fi
 
 echo
 echo "Templates:"
