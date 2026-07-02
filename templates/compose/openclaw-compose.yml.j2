@@ -6,7 +6,7 @@ services:
 
     container_name: oces-{{ name }}
 
-    restart: unless-stopped
+    restart: {{ restart }}
 
     init: true
 
@@ -29,6 +29,10 @@ services:
 
       OPENCLAW_WORKSPACE_DIR: /home/node/.openclaw/workspace
 
+      OPENCLAW_GATEWAY_TOKEN: ${OPENCLAW_GATEWAY_TOKEN:-}
+
+      OPENCLAW_ALLOW_INSECURE_PRIVATE_WS: ${OPENCLAW_ALLOW_INSECURE_PRIVATE_WS:-}
+
       TZ: ${OPENCLAW_TZ}
 
     command:
@@ -36,9 +40,9 @@ services:
       - dist/index.js
       - gateway
       - --bind
-      - lan
+      - ${OPENCLAW_GATEWAY_BIND:-lan}
       - --port
-      - "18789"
+      - "{{ gateway_port }}"
 
     security_opt:
       - no-new-privileges:true
@@ -51,7 +55,10 @@ services:
       - host.docker.internal:host-gateway
 
     networks:
-      - oces_proxy
+      - {{ network }}
+
+    ports:
+      - "127.0.0.1:{{ port }}:{{ gateway_port }}"
 
     volumes:
 
@@ -65,7 +72,7 @@ services:
 
       - traefik.enable=true
 
-      - traefik.docker.network=oces_proxy
+      - traefik.docker.network={{ network }}
 
       - traefik.http.routers.{{ name }}.rule=Host(`{{ domain }}`)
 
@@ -73,7 +80,9 @@ services:
 
       - traefik.http.routers.{{ name }}.tls.certresolver=letsencrypt
 
-      - traefik.http.services.{{ name }}.loadbalancer.server.port=18789
+      - traefik.http.routers.{{ name }}.middlewares=security@file,gzip@file
+
+      - traefik.http.services.{{ name }}.loadbalancer.server.port={{ gateway_port }}
 
     healthcheck:
 
@@ -82,7 +91,7 @@ services:
           "CMD",
           "node",
           "-e",
-          "fetch('http://127.0.0.1:18789/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+          "fetch('http://127.0.0.1:{{ gateway_port }}/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
         ]
 
       interval: 30s
@@ -95,6 +104,6 @@ services:
 
 networks:
 
-  oces_proxy:
+  {{ network }}:
 
     external: true
