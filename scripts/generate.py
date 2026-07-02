@@ -217,6 +217,7 @@ for instance_name, cfg in stack["instances"].items():
         or secrets.token_urlsafe(48)
     )
     openai_api_key = read_env_value(env_path, "OPENAI_API_KEY") or ""
+    telegram_bot_token = read_env_value(env_path, "TELEGRAM_BOT_TOKEN") or ""
 
     envfile = env_template.render(
         name=instance_name,
@@ -227,6 +228,7 @@ for instance_name, cfg in stack["instances"].items():
         msteams_port=defaults["msteams_port"],
         gateway_token=gateway_token,
         openai_api_key=openai_api_key,
+        telegram_bot_token=telegram_bot_token,
     )
 
     write_text_lf(env_path, envfile)
