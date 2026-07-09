@@ -40,6 +40,29 @@
       </section>
 
       <section id="notice" class="notice hidden"></section>
+
+      <section class="creator" aria-label="Criar instância">
+        <div>
+          <h2>Nova instância</h2>
+          <p>Cria a configuração, gera os arquivos e sobe o container OpenClaw.</p>
+        </div>
+        <form id="createInstanceForm" class="creator-form">
+          <label>
+            Nome
+            <input id="newName" name="name" type="text" autocomplete="off" placeholder="financeiro" />
+          </label>
+          <label>
+            Domínio
+            <input id="newDomain" name="domain" type="text" autocomplete="off" placeholder="financeiro.colegiosantoanjo.tech" />
+          </label>
+          <label>
+            Porta
+            <input id="newPort" name="port" type="number" min="1024" max="65535" placeholder="3006" />
+          </label>
+          <button id="createInstance" type="submit">Criar</button>
+        </form>
+      </section>
+
       <section id="cards" class="cards" aria-label="Cards de instâncias"></section>
 
       <section class="table-wrap" aria-label="Tabela de instâncias">

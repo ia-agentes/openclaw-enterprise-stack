@@ -109,6 +109,7 @@ h1 {
 }
 
 .summary > div,
+.creator,
 .card,
 .table-wrap,
 .notice {
@@ -142,6 +143,52 @@ h1 {
 
 .hidden {
   display: none;
+}
+
+.creator {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.7fr) minmax(0, 2fr);
+  align-items: end;
+  gap: 14px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.creator h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.creator p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.creator-form {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.8fr) minmax(220px, 1.5fr) minmax(110px, 0.6fr) auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.creator-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.creator-form input {
+  width: 100%;
+  min-width: 0;
+}
+
+.creator-form button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
 }
 
 .cards {
@@ -325,7 +372,9 @@ tr:last-child td {
   }
 
   .summary,
-  .cards {
+  .cards,
+  .creator,
+  .creator-form {
     grid-template-columns: 1fr;
   }
 }

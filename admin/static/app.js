@@ -10,6 +10,11 @@ const refreshAll = document.querySelector("#refreshAll");
 const cards = document.querySelector("#cards");
 const rows = document.querySelector("#rows");
 const notice = document.querySelector("#notice");
+const createInstanceForm = document.querySelector("#createInstanceForm");
+const createInstanceButton = document.querySelector("#createInstance");
+const newName = document.querySelector("#newName");
+const newDomain = document.querySelector("#newDomain");
+const newPort = document.querySelector("#newPort");
 
 tokenInput.value = state.token;
 
@@ -20,6 +25,12 @@ saveToken.addEventListener("click", () => {
 });
 
 refreshAll.addEventListener("click", () => loadStatus());
+createInstanceForm.addEventListener("submit", createInstance);
+newName.addEventListener("input", () => {
+  if (!newDomain.value.trim()) {
+    newDomain.value = suggestedDomain(newName.value.trim(), state.data?.instances || []);
+  }
+});
 
 async function api(path) {
   const headers = {};
@@ -36,6 +47,22 @@ async function apiPost(path) {
   const headers = {};
   if (state.token) headers.Authorization = `Bearer ${state.token}`;
   const response = await fetch(path, { method: "POST", headers, cache: "no-store" });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+async function apiJsonPost(path, payload) {
+  const headers = { "Content-Type": "application/json" };
+  if (state.token) headers.Authorization = `Bearer ${state.token}`;
+  const response = await fetch(path, {
+    method: "POST",
+    headers,
+    cache: "no-store",
+    body: JSON.stringify(payload),
+  });
   if (!response.ok) {
     const text = await response.text();
     throw new Error(text || `HTTP ${response.status}`);
@@ -60,10 +87,40 @@ async function loadStatus(instance = null) {
       state.data = data;
     }
     render(state.data);
+    fillCreateDefaults();
   } catch (error) {
     setNotice(readableError(error));
   } finally {
     state.loading = false;
+    refreshAll.disabled = false;
+  }
+}
+
+async function createInstance(event) {
+  event.preventDefault();
+  const payload = {
+    name: newName.value.trim().toLowerCase(),
+    domain: newDomain.value.trim().toLowerCase(),
+    port: Number(newPort.value),
+  };
+  if (!payload.name || !payload.domain || !payload.port) {
+    setNotice("Informe nome, domínio e porta para criar a instância.");
+    return;
+  }
+  if (!window.confirm(`Criar e iniciar a instância ${title(payload.name)}?`)) return;
+
+  createInstanceButton.disabled = true;
+  refreshAll.disabled = true;
+  setNotice(`Criando ${title(payload.name)}...`);
+  try {
+    await apiJsonPost("/api/instances", payload);
+    setNotice(`${title(payload.name)} criada. Atualizando o painel em alguns segundos.`);
+    createInstanceForm.reset();
+    window.setTimeout(() => loadStatus(), 8000);
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    createInstanceButton.disabled = false;
     refreshAll.disabled = false;
   }
 }
@@ -217,6 +274,25 @@ function versionText(item) {
 
 function modelText(item) {
   return item.models?.default || "-";
+}
+
+function fillCreateDefaults() {
+  const instances = state.data?.instances || [];
+  if (!newPort.value) {
+    const ports = instances.map((item) => Number(item.port)).filter(Number.isFinite);
+    newPort.value = String(ports.length ? Math.max(...ports) + 1 : 3001);
+  }
+  if (newName.value.trim() && !newDomain.value.trim()) {
+    newDomain.value = suggestedDomain(newName.value.trim(), instances);
+  }
+}
+
+function suggestedDomain(name, instances) {
+  const clean = name.toLowerCase().replace(/[^a-z0-9-]/g, "").replace(/^-+|-+$/g, "");
+  if (!clean) return "";
+  const domain = instances.find((item) => item.domain)?.domain || "";
+  const suffix = domain.split(".").slice(1).join(".");
+  return suffix ? `${clean}.${suffix}` : "";
 }
 
 function title(value) {

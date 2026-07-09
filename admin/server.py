@@ -2,16 +2,24 @@
 import json
 import os
 import http.client
+import re
+import shutil
 import socket
 import subprocess
+import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, urlparse
+
+import yaml
 
 
 ROOT = Path(__file__).resolve().parent.parent
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
 DOCKER_SOCKET = "/var/run/docker.sock"
+CREATE_LOCK = threading.Lock()
+INSTANCE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,31}$")
+DOMAIN_RE = re.compile(r"^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$")
 
 
 class UnixHTTPConnection(http.client.HTTPConnection):
@@ -25,13 +33,19 @@ class UnixHTTPConnection(http.client.HTTPConnection):
         self.sock.connect(self.socket_path)
 
 
-def docker_request(method, path, timeout=30):
+def docker_request(method, path, payload=None, timeout=30):
     if not os.path.exists(DOCKER_SOCKET):
         raise RuntimeError("docker socket unavailable")
 
     conn = UnixHTTPConnection(DOCKER_SOCKET, timeout=timeout)
+    body = None
+    headers = {"Host": "docker"}
+    if payload is not None:
+        body = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+        headers["Content-Length"] = str(len(body))
     try:
-        conn.request(method, path, headers={"Host": "docker"})
+        conn.request(method, path, body=body, headers=headers)
         response = conn.getresponse()
         body = response.read().decode("utf-8", errors="replace")
         if response.status >= 400:
@@ -41,22 +55,259 @@ def docker_request(method, path, timeout=30):
         conn.close()
 
 
+def docker_json(method, path, payload=None, timeout=30):
+    status, body = docker_request(method, path, payload=payload, timeout=timeout)
+    if not body:
+        return {}
+    return json.loads(body)
+
+
 def known_instances():
+    return set(load_stack()["instances"].keys())
+
+
+def load_stack():
+    stack = yaml.safe_load((ROOT / "config" / "stack.yml").read_text(encoding="utf-8"))
+    if not isinstance(stack, dict) or not isinstance(stack.get("instances"), dict):
+        raise ValueError("config/stack.yml invalido")
+    return stack
+
+
+def load_defaults():
+    defaults = yaml.safe_load((ROOT / "config" / "defaults.yml").read_text(encoding="utf-8"))
+    if not isinstance(defaults, dict):
+        raise ValueError("config/defaults.yml invalido")
+    return defaults
+
+
+def append_instance_to_stack(name, domain, port):
     stack_path = ROOT / "config" / "stack.yml"
-    names = []
+    raw = stack_path.read_text(encoding="utf-8")
     in_instances = False
-    for raw_line in stack_path.read_text(encoding="utf-8").splitlines():
+    insert_at = None
+    lines = raw.splitlines()
+    for index, raw_line in enumerate(lines):
         line = raw_line.rstrip()
         if line == "instances:":
             in_instances = True
             continue
-        if not in_instances or not line.strip() or line.lstrip().startswith("#"):
+        if not in_instances:
             continue
         if not line.startswith(" "):
+            insert_at = index
             break
-        if line.startswith("  ") and not line.startswith("    ") and line.strip().endswith(":"):
-            names.append(line.strip()[:-1])
-    return set(names)
+
+    block = [
+        "",
+        f"  {name}:",
+        f"    domain: {domain}",
+        f"    port: {port}",
+    ]
+    if insert_at is None:
+        new_lines = lines + block
+    else:
+        new_lines = lines[:insert_at] + block + lines[insert_at:]
+    stack_path.write_text("\n".join(new_lines).rstrip() + "\n", encoding="utf-8", newline="\n")
+
+
+def read_env(path):
+    values = {}
+    if not path.exists():
+        return values
+    for line in path.read_text(encoding="utf-8").splitlines():
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        values[key] = value
+    return values
+
+
+def validate_instance_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("payload invalido")
+    name = str(payload.get("name", "")).strip().lower()
+    domain = str(payload.get("domain", "")).strip().lower()
+    port = payload.get("port")
+
+    if not INSTANCE_NAME_RE.match(name):
+        raise ValueError("nome deve usar 2 a 32 caracteres: letras minusculas, numeros e hifen")
+    if not DOMAIN_RE.match(domain):
+        raise ValueError("dominio invalido")
+    try:
+        port = int(port)
+    except (TypeError, ValueError):
+        raise ValueError("porta precisa ser numerica")
+    if port < 1024 or port > 65535:
+        raise ValueError("porta precisa estar entre 1024 e 65535")
+
+    stack = load_stack()
+    if name in stack["instances"]:
+        raise ValueError("instancia ja existe")
+    for existing_name, cfg in stack["instances"].items():
+        if cfg.get("domain") == domain:
+            raise ValueError(f"dominio ja usado por {existing_name}")
+        if int(cfg.get("port", 0)) == port:
+            raise ValueError(f"porta ja usada por {existing_name}")
+
+    return name, domain, port
+
+
+def run_generate():
+    result = subprocess.run(
+        ["python3", str(ROOT / "scripts" / "generate.py")],
+        cwd=ROOT,
+        text=True,
+        capture_output=True,
+        timeout=120,
+        check=False,
+    )
+    if result.returncode != 0:
+        raise RuntimeError((result.stderr or result.stdout).strip())
+    return result.stdout
+
+
+def wait_container(container_id, timeout=45):
+    return docker_json("POST", f"/containers/{container_id}/wait", timeout=timeout)
+
+
+def chown_instance_data(name):
+    data_dir = ROOT / "instances" / name / "data"
+    payload = {
+        "Image": "openclaw:latest",
+        "Cmd": ["-R", "node:node", "/data"],
+        "Entrypoint": ["chown"],
+        "HostConfig": {
+            "AutoRemove": False,
+            "Binds": [f"{data_dir}:/data"],
+        },
+    }
+    created = docker_json("POST", "/containers/create", payload=payload, timeout=30)
+    container_id = created["Id"]
+    try:
+        docker_request("POST", f"/containers/{container_id}/start", timeout=30)
+        result = wait_container(container_id)
+        if result.get("StatusCode") != 0:
+            raise RuntimeError("falha ao ajustar permissoes da instancia")
+    finally:
+        try:
+            docker_request("DELETE", f"/containers/{container_id}?force=true", timeout=15)
+        except Exception:
+            pass
+
+
+def create_openclaw_container(name, domain, port):
+    defaults = load_defaults()
+    network = load_stack().get("proxy", {}).get("network", defaults["network"])
+    gateway_port = str(defaults["gateway_port"])
+    env_file = read_env(ROOT / "instances" / name / ".env")
+    instance_dir = ROOT / "instances" / name
+    openclaw_dir = instance_dir / "data" / ".openclaw"
+    workspace_dir = instance_dir / "data" / "workspace"
+    auth_dir = instance_dir / "data" / "auth"
+
+    env = {
+        **env_file,
+        "HOME": "/home/node",
+        "OPENCLAW_HOME": "/home/node",
+        "TERM": "xterm-256color",
+        "OPENCLAW_STATE_DIR": "/home/node/.openclaw",
+        "OPENCLAW_CONFIG_PATH": "/home/node/.openclaw/openclaw.json",
+        "OPENCLAW_CONFIG_DIR": "/home/node/.openclaw",
+        "OPENCLAW_WORKSPACE_DIR": "/home/node/.openclaw/workspace",
+        "OPENCLAW_GATEWAY_TOKEN": env_file.get("OPENCLAW_GATEWAY_TOKEN", ""),
+        "OPENCLAW_ALLOW_INSECURE_PRIVATE_WS": env_file.get("OPENCLAW_ALLOW_INSECURE_PRIVATE_WS", ""),
+        "TZ": env_file.get("OPENCLAW_TZ", "UTC"),
+    }
+
+    payload = {
+        "Image": env_file.get("OPENCLAW_IMAGE") or defaults["image"],
+        "Cmd": ["node", "dist/index.js", "gateway", "--bind", env_file.get("OPENCLAW_GATEWAY_BIND", "lan"), "--port", gateway_port],
+        "Env": [f"{key}={value}" for key, value in env.items()],
+        "Labels": {
+            "traefik.enable": "true",
+            "traefik.docker.network": network,
+            f"traefik.http.routers.{name}.rule": f"Host(`{domain}`)",
+            f"traefik.http.routers.{name}.entrypoints": "websecure",
+            f"traefik.http.routers.{name}.tls.certresolver": "letsencrypt",
+            f"traefik.http.routers.{name}.middlewares": "security@file,gzip@file",
+            f"traefik.http.services.{name}.loadbalancer.server.port": gateway_port,
+        },
+        "ExposedPorts": {f"{gateway_port}/tcp": {}},
+        "Healthcheck": {
+            "Test": [
+                "CMD",
+                "node",
+                "-e",
+                f"fetch('http://127.0.0.1:{gateway_port}/healthz').then((r)=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+            ],
+            "Interval": 30000000000,
+            "Timeout": 5000000000,
+            "Retries": 5,
+            "StartPeriod": 20000000000,
+        },
+        "HostConfig": {
+            "Init": True,
+            "RestartPolicy": {"Name": defaults.get("restart", "unless-stopped")},
+            "SecurityOpt": ["no-new-privileges:true"],
+            "CapDrop": ["NET_ADMIN", "NET_RAW"],
+            "ExtraHosts": ["host.docker.internal:host-gateway"],
+            "NetworkMode": network,
+            "Binds": [
+                f"{openclaw_dir}:/home/node/.openclaw",
+                f"{workspace_dir}:/home/node/.openclaw/workspace",
+                f"{auth_dir}:/home/node/.config/openclaw",
+            ],
+            "PortBindings": {f"{gateway_port}/tcp": [{"HostIp": "127.0.0.1", "HostPort": str(port)}]},
+        },
+        "NetworkingConfig": {"EndpointsConfig": {network: {}}},
+    }
+
+    docker_json("GET", f"/images/{payload['Image']}/json", timeout=30)
+    try:
+        docker_json("GET", f"/containers/oces-{name}/json", timeout=15)
+        raise RuntimeError("container ja existe")
+    except RuntimeError as exc:
+        if "No such container" not in str(exc) and "404" not in str(exc):
+            raise
+
+    created = docker_json("POST", f"/containers/create?name=oces-{name}", payload=payload, timeout=30)
+    try:
+        docker_request("POST", f"/containers/{created['Id']}/start", timeout=30)
+    except Exception:
+        try:
+            docker_request("DELETE", f"/containers/{created['Id']}?force=true", timeout=15)
+        except Exception:
+            pass
+        raise
+    return created["Id"]
+
+
+def create_instance(payload):
+    with CREATE_LOCK:
+        name, domain, port = validate_instance_payload(payload)
+        stack_path = ROOT / "config" / "stack.yml"
+        previous_stack = stack_path.read_text(encoding="utf-8")
+        try:
+            append_instance_to_stack(name, domain, port)
+            generate_output = run_generate()
+            chown_instance_data(name)
+            container_id = create_openclaw_container(name, domain, port)
+        except Exception:
+            stack_path.write_text(previous_stack, encoding="utf-8", newline="\n")
+            instance_dir = ROOT / "instances" / name
+            if instance_dir.exists() and instance_dir.is_dir() and instance_dir.parent == ROOT / "instances":
+                shutil.rmtree(instance_dir)
+            try:
+                run_generate()
+            except Exception:
+                pass
+            raise
+        return {
+            "ok": True,
+            "instance": {"name": name, "domain": domain, "port": port},
+            "containerId": container_id,
+            "generate": generate_output,
+        }
 
 
 class AdminHandler(SimpleHTTPRequestHandler):
@@ -114,6 +365,20 @@ class AdminHandler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(result.stdout.encode("utf-8"))
+            return
+
+        if self.command == "POST" and parsed.path == "/api/instances":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                created = create_instance(payload)
+            except ValueError as exc:
+                self.write_json({"ok": False, "error": str(exc)}, status=400)
+                return
+            except Exception as exc:
+                self.write_json({"ok": False, "error": str(exc)}, status=500)
+                return
+            self.write_json(created, status=201)
             return
 
         if self.command == "POST" and parsed.path.startswith("/api/instances/"):
