@@ -3,5 +3,9 @@
 !admin/**
 !config/
 !config/stack.yml
+!config/defaults.yml
 !scripts/
 !scripts/status.py
+!scripts/generate.py
+!templates/
+!templates/**
