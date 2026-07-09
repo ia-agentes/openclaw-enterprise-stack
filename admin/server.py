@@ -176,6 +176,7 @@ def chown_instance_data(name):
         "Image": "openclaw:latest",
         "Cmd": ["-R", "node:node", "/data"],
         "Entrypoint": ["chown"],
+        "User": "root",
         "HostConfig": {
             "AutoRemove": False,
             "Binds": [f"{data_dir}:/data"],
