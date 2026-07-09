@@ -30,6 +30,7 @@ mapfile -t containers < <(
         --filter "name=oces-" \
         --format "{{.Names}}" |
         grep -v '^oces-traefik$' |
+        grep -v '^oces-dashboard$' |
         sort
 )
 

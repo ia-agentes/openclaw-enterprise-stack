@@ -110,6 +110,7 @@ h1 {
 
 .summary > div,
 .creator,
+.pending-access,
 .card,
 .table-wrap,
 .notice {
@@ -189,6 +190,77 @@ h1 {
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;
+}
+
+.pending-access {
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.section-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: end;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.section-head h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.section-head p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.pending-list {
+  display: grid;
+  gap: 8px;
+}
+
+.pending-item {
+  display: grid;
+  grid-template-columns: minmax(150px, 0.8fr) minmax(260px, 1.2fr) minmax(220px, 1fr) auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #fbfcfd;
+}
+
+.pending-item div {
+  display: grid;
+  gap: 3px;
+}
+
+.pending-item span,
+.pending-item small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.pending-item code {
+  color: var(--text);
+  font-size: 12px;
+  overflow-wrap: anywhere;
+}
+
+.pending-item button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.empty-state {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 10px;
+  border: 1px dashed var(--line);
+  border-radius: 8px;
 }
 
 .cards {
@@ -374,7 +446,13 @@ tr:last-child td {
   .summary,
   .cards,
   .creator,
-  .creator-form {
+  .creator-form,
+  .pending-item {
     grid-template-columns: 1fr;
+  }
+
+  .section-head {
+    align-items: stretch;
+    flex-direction: column;
   }
 }

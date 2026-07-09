@@ -21,6 +21,7 @@ DOCKER_SOCKET = "/var/run/docker.sock"
 CREATE_LOCK = threading.Lock()
 INSTANCE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,31}$")
 DOMAIN_RE = re.compile(r"^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$")
+REQUEST_ID_RE = re.compile(r"^[a-f0-9-]{32,40}$", re.IGNORECASE)
 
 
 class UnixHTTPConnection(http.client.HTTPConnection):
@@ -61,6 +62,48 @@ def docker_json(method, path, payload=None, timeout=30):
     if not body:
         return {}
     return json.loads(body)
+
+
+def docker_demux(data):
+    raw = data.encode("latin1", errors="ignore")
+    output = bytearray()
+    index = 0
+    while index + 8 <= len(raw):
+        size = int.from_bytes(raw[index + 4:index + 8], "big")
+        index += 8
+        if size < 0 or index + size > len(raw):
+            break
+        output.extend(raw[index:index + size])
+        index += size
+    if output:
+        return output.decode("utf-8", errors="replace")
+    return data
+
+
+def docker_exec(container, cmd, timeout=30):
+    created = docker_json(
+        "POST",
+        f"/containers/{container}/exec",
+        payload={
+            "AttachStdout": True,
+            "AttachStderr": True,
+            "Tty": False,
+            "Cmd": cmd,
+        },
+        timeout=timeout,
+    )
+    exec_id = created["Id"]
+    _, body = docker_request(
+        "POST",
+        f"/exec/{exec_id}/start",
+        payload={"Detach": False, "Tty": False},
+        timeout=timeout,
+    )
+    inspect = docker_json("GET", f"/exec/{exec_id}/json", timeout=timeout)
+    output = docker_demux(body).strip()
+    if inspect.get("ExitCode") not in (0, None):
+        raise RuntimeError(output or f"exec failed in {container}")
+    return output
 
 
 def known_instances():
@@ -312,6 +355,54 @@ def create_instance(payload):
         }
 
 
+def pending_device_requests():
+    script = r'''
+const fs = require("node:fs");
+const path = "/home/node/.openclaw/devices/pending.json";
+const rows = [];
+if (fs.existsSync(path)) {
+  const pending = JSON.parse(fs.readFileSync(path, "utf8"));
+  const now = Date.now();
+  for (const request of Object.values(pending)) {
+    if (!request || now - request.ts > 5 * 60 * 1000) continue;
+    if (!["openclaw-control-ui", "webchat-ui"].includes(request.clientId)) continue;
+    rows.push({
+      requestId: request.requestId,
+      clientId: request.clientId || "",
+      remoteIp: request.remoteIp || "",
+      scopes: Array.isArray(request.scopes) ? request.scopes : [],
+      ageSeconds: Math.max(0, Math.round((now - request.ts) / 1000)),
+    });
+  }
+}
+console.log(JSON.stringify(rows));
+'''
+    rows = []
+    for instance in sorted(known_instances()):
+        container = f"oces-{instance}"
+        try:
+            output = docker_exec(container, ["node", "-e", script], timeout=20)
+            pending = json.loads(output or "[]")
+        except Exception as exc:
+            rows.append({"instance": instance, "error": str(exc), "requests": []})
+            continue
+        rows.append({"instance": instance, "requests": pending})
+    return rows
+
+
+def approve_device_request(instance, request_id):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    if not REQUEST_ID_RE.match(request_id):
+        raise ValueError("request id invalido")
+    output = docker_exec(
+        f"oces-{instance}",
+        ["node", "dist/index.js", "devices", "approve", request_id],
+        timeout=45,
+    )
+    return {"ok": True, "instance": instance, "requestId": request_id, "output": output}
+
+
 class AdminHandler(SimpleHTTPRequestHandler):
     server_version = "OCESAdmin/1.0"
 
@@ -367,6 +458,30 @@ class AdminHandler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(result.stdout.encode("utf-8"))
+            return
+
+        if self.command == "GET" and parsed.path == "/api/devices/pending":
+            try:
+                self.write_json({"ok": True, "items": pending_device_requests()})
+            except Exception as exc:
+                self.write_json({"ok": False, "error": str(exc)}, status=500)
+            return
+
+        if self.command == "POST" and parsed.path == "/api/devices/approve":
+            try:
+                length = int(self.headers.get("Content-Length", "0"))
+                payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                approved = approve_device_request(
+                    str(payload.get("instance", "")).strip(),
+                    str(payload.get("requestId", "")).strip(),
+                )
+            except ValueError as exc:
+                self.write_json({"ok": False, "error": str(exc)}, status=400)
+                return
+            except Exception as exc:
+                self.write_json({"ok": False, "error": str(exc)}, status=500)
+                return
+            self.write_json(approved)
             return
 
         if self.command == "POST" and parsed.path == "/api/instances":

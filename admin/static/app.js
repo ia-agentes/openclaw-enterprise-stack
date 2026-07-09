@@ -2,6 +2,7 @@ const state = {
   token: localStorage.getItem("ocesAdminToken") || "",
   loading: false,
   data: null,
+  pending: [],
 };
 
 const tokenInput = document.querySelector("#tokenInput");
@@ -15,6 +16,8 @@ const createInstanceButton = document.querySelector("#createInstance");
 const newName = document.querySelector("#newName");
 const newDomain = document.querySelector("#newDomain");
 const newPort = document.querySelector("#newPort");
+const refreshPending = document.querySelector("#refreshPending");
+const pendingAccessList = document.querySelector("#pendingAccessList");
 
 tokenInput.value = state.token;
 
@@ -25,6 +28,7 @@ saveToken.addEventListener("click", () => {
 });
 
 refreshAll.addEventListener("click", () => loadStatus());
+refreshPending.addEventListener("click", () => loadPendingAccess());
 createInstanceForm.addEventListener("submit", createInstance);
 newName.addEventListener("input", () => {
   if (!newDomain.value.trim()) {
@@ -88,11 +92,75 @@ async function loadStatus(instance = null) {
     }
     render(state.data);
     fillCreateDefaults();
+    loadPendingAccess();
   } catch (error) {
     setNotice(readableError(error));
   } finally {
     state.loading = false;
     refreshAll.disabled = false;
+  }
+}
+
+async function loadPendingAccess() {
+  try {
+    const data = await api("/api/devices/pending");
+    state.pending = data.items || [];
+    renderPendingAccess(state.pending);
+  } catch (error) {
+    pendingAccessList.innerHTML = `<div class="empty-state">${escapeHtml(readableError(error))}</div>`;
+  }
+}
+
+function renderPendingAccess(items) {
+  const requests = [];
+  for (const item of items || []) {
+    for (const request of item.requests || []) {
+      requests.push({ ...request, instance: item.instance });
+    }
+  }
+  if (!requests.length) {
+    pendingAccessList.innerHTML = '<div class="empty-state">Nenhum acesso pendente.</div>';
+    return;
+  }
+
+  pendingAccessList.innerHTML = requests.map(renderPendingRequest).join("");
+  document.querySelectorAll("[data-approve-device]").forEach((button) => {
+    button.addEventListener("click", () =>
+      approveDevice(button.dataset.instance, button.dataset.requestId),
+    );
+  });
+}
+
+function renderPendingRequest(request) {
+  const scopes = Array.isArray(request.scopes) ? request.scopes.join(", ") : "";
+  return `
+    <div class="pending-item">
+      <div>
+        <strong>${escapeHtml(title(request.instance))}</strong>
+        <span>${escapeHtml(request.remoteIp || "-")}</span>
+      </div>
+      <code>${escapeHtml(request.requestId)}</code>
+      <small>${escapeHtml(scopes || request.clientId || "-")}</small>
+      <button
+        type="button"
+        data-approve-device="true"
+        data-instance="${escapeAttribute(request.instance)}"
+        data-request-id="${escapeAttribute(request.requestId)}"
+      >Aprovar</button>
+    </div>
+  `;
+}
+
+async function approveDevice(instance, requestId) {
+  if (!window.confirm(`Aprovar acesso do navegador em ${title(instance)}?`)) return;
+  setNotice(`Aprovando acesso em ${title(instance)}...`);
+  try {
+    await apiJsonPost("/api/devices/approve", { instance, requestId });
+    setNotice(`Acesso aprovado em ${title(instance)}.`);
+    await loadPendingAccess();
+    window.setTimeout(() => loadStatus(instance), 2500);
+  } catch (error) {
+    setNotice(readableError(error));
   }
 }
 
