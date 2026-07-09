@@ -15,6 +15,7 @@ import yaml
 
 
 ROOT = Path(__file__).resolve().parent.parent
+HOST_ROOT = Path(os.environ.get("OCES_HOST_ROOT", str(ROOT)))
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
 DOCKER_SOCKET = "/var/run/docker.sock"
 CREATE_LOCK = threading.Lock()
@@ -171,7 +172,7 @@ def wait_container(container_id, timeout=45):
 
 
 def chown_instance_data(name):
-    data_dir = ROOT / "instances" / name / "data"
+    data_dir = HOST_ROOT / "instances" / name / "data"
     payload = {
         "Image": "openclaw:latest",
         "Cmd": ["-R", "node:node", "/data"],
@@ -201,10 +202,10 @@ def create_openclaw_container(name, domain, port):
     network = load_stack().get("proxy", {}).get("network", defaults["network"])
     gateway_port = str(defaults["gateway_port"])
     env_file = read_env(ROOT / "instances" / name / ".env")
-    instance_dir = ROOT / "instances" / name
-    openclaw_dir = instance_dir / "data" / ".openclaw"
-    workspace_dir = instance_dir / "data" / "workspace"
-    auth_dir = instance_dir / "data" / "auth"
+    host_instance_dir = HOST_ROOT / "instances" / name
+    openclaw_dir = host_instance_dir / "data" / ".openclaw"
+    workspace_dir = host_instance_dir / "data" / "workspace"
+    auth_dir = host_instance_dir / "data" / "auth"
 
     env = {
         **env_file,
