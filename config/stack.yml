@@ -33,3 +33,7 @@ instances:
   paulo:
     domain: paulo.colegiosantoanjo.tech
     port: 3005
+
+  compras:
+    domain: compras.colegiosantoanjo.tech
+    port: 3006
