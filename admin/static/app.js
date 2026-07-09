@@ -32,6 +32,17 @@ async function api(path) {
   return response.json();
 }
 
+async function apiPost(path) {
+  const headers = {};
+  if (state.token) headers.Authorization = `Bearer ${state.token}`;
+  const response = await fetch(path, { method: "POST", headers, cache: "no-store" });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
 async function loadStatus(instance = null) {
   setNotice("");
   state.loading = true;
@@ -73,6 +84,18 @@ function render(data) {
 
   document.querySelectorAll("[data-refresh-instance]").forEach((button) => {
     button.addEventListener("click", () => loadStatus(button.dataset.refreshInstance));
+  });
+
+  document.querySelectorAll("[data-validate-channel]").forEach((button) => {
+    button.addEventListener("click", async () => {
+      const label = button.dataset.validateChannel === "whatsapp" ? "WhatsApp" : "Telegram";
+      await loadStatus(button.dataset.instance);
+      setNotice(`${label} validado para ${title(button.dataset.instance)}.`);
+    });
+  });
+
+  document.querySelectorAll("[data-restart-instance]").forEach((button) => {
+    button.addEventListener("click", () => restartInstance(button.dataset.restartInstance));
   });
 }
 
@@ -120,10 +143,30 @@ function renderRow(item) {
         <div class="row-actions">
           <a href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">Abrir</a>
           <button type="button" data-refresh-instance="${escapeAttribute(item.name)}">Validar</button>
+          <button type="button" data-validate-channel="telegram" data-instance="${escapeAttribute(item.name)}">Telegram</button>
+          <button type="button" data-validate-channel="whatsapp" data-instance="${escapeAttribute(item.name)}">WhatsApp</button>
+          <button type="button" class="danger" data-restart-instance="${escapeAttribute(item.name)}">Reiniciar</button>
         </div>
       </td>
     </tr>
   `;
+}
+
+async function restartInstance(instance) {
+  const name = title(instance);
+  if (!window.confirm(`Reiniciar a instância ${name}?`)) return;
+
+  setNotice(`Solicitando reinício de ${name}...`);
+  refreshAll.disabled = true;
+  try {
+    await apiPost(`/api/instances/${encodeURIComponent(instance)}/restart`);
+    setNotice(`Reinício enviado para ${name}. Vou atualizar o status em alguns segundos.`);
+    window.setTimeout(() => loadStatus(instance), 7000);
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    refreshAll.disabled = false;
+  }
 }
 
 function metric(label, value) {

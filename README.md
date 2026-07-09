@@ -38,6 +38,8 @@ tests/
 
 O stack inclui um painel central para visualizar as instâncias OpenClaw, com
 status do gateway, versão, modelo, autenticação OpenAI, Telegram e WhatsApp.
+Ele também oferece ações autenticadas para validar uma instância e reiniciar
+somente containers declarados em `config/stack.yml`.
 
 Configure o domínio e um token forte:
 

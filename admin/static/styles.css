@@ -52,6 +52,12 @@ button.primary,
   color: #fff;
 }
 
+button.danger {
+  border-color: #f6b6b0;
+  background: var(--accent-soft);
+  color: var(--bad);
+}
+
 input {
   min-height: 38px;
   border: 1px solid var(--line);
@@ -240,7 +246,7 @@ h1 {
 table {
   width: 100%;
   border-collapse: collapse;
-  min-width: 1080px;
+  min-width: 1240px;
 }
 
 th,
@@ -272,7 +278,8 @@ tr:last-child td {
   display: flex;
   gap: 8px;
   align-items: center;
-  white-space: nowrap;
+  flex-wrap: wrap;
+  min-width: 340px;
 }
 
 .row-actions a {
@@ -289,6 +296,7 @@ tr:last-child td {
 
 .row-actions button {
   min-height: 34px;
+  padding: 0 10px;
 }
 
 @media (max-width: 1180px) {
