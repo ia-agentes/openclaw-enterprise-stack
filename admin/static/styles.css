@@ -27,7 +27,8 @@ body {
 }
 
 button,
-input {
+input,
+select {
   font: inherit;
 }
 
@@ -58,7 +59,8 @@ button.danger {
   color: var(--bad);
 }
 
-input {
+input,
+select {
   min-height: 38px;
   border: 1px solid var(--line);
   border-radius: 8px;
@@ -109,6 +111,7 @@ h1 {
 }
 
 .summary > div,
+.ai-config,
 .creator,
 .pending-access,
 .card,
@@ -144,6 +147,53 @@ h1 {
 
 .hidden {
   display: none;
+}
+
+.ai-config {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.7fr) minmax(0, 2fr);
+  align-items: end;
+  gap: 14px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.ai-config h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.ai-config p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.ai-config-form {
+  display: grid;
+  grid-template-columns: minmax(130px, 0.7fr) minmax(240px, 1.3fr) minmax(190px, 1fr) auto auto;
+  gap: 10px;
+  align-items: end;
+}
+
+.ai-config-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.ai-config-form input,
+.ai-config-form select {
+  width: 100%;
+  min-width: 0;
+}
+
+.ai-config-form button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
 }
 
 .creator {
@@ -445,6 +495,8 @@ tr:last-child td {
 
   .summary,
   .cards,
+  .ai-config,
+  .ai-config-form,
   .creator,
   .creator-form,
   .pending-item {

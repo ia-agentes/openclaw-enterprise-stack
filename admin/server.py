@@ -9,7 +9,7 @@ import subprocess
 import threading
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
-from urllib.parse import parse_qs, urlparse
+from urllib.parse import parse_qs, unquote, urlparse
 
 import yaml
 
@@ -22,6 +22,19 @@ CREATE_LOCK = threading.Lock()
 INSTANCE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,31}$")
 DOMAIN_RE = re.compile(r"^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$")
 REQUEST_ID_RE = re.compile(r"^[a-f0-9-]{32,40}$", re.IGNORECASE)
+OPENAI_KEY_RE = re.compile(r"^sk-[A-Za-z0-9_-]{20,}$")
+OPENAI_MODELS = {
+    "openai/gpt-5.5",
+    "openai/gpt-5.5-mini",
+    "openai/gpt-5.5-nano",
+    "openai/gpt-5.4",
+    "openai/gpt-5.4-mini",
+    "openai/gpt-5.4-nano",
+    "openai/gpt-5",
+    "openai/gpt-5-mini",
+    "openai/gpt-5-nano",
+    "openai/chat-latest",
+}
 
 
 class UnixHTTPConnection(http.client.HTTPConnection):
@@ -164,6 +177,22 @@ def read_env(path):
         key, value = line.split("=", 1)
         values[key] = value
     return values
+
+
+def write_env_value(path, key, value):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lines = path.read_text(encoding="utf-8").splitlines() if path.exists() else []
+    updated = False
+    next_lines = []
+    for line in lines:
+        if line.startswith(f"{key}="):
+            next_lines.append(f"{key}={value}")
+            updated = True
+        else:
+            next_lines.append(line)
+    if not updated:
+        next_lines.append(f"{key}={value}")
+    path.write_text("\n".join(next_lines).rstrip() + "\n", encoding="utf-8", newline="\n")
 
 
 def validate_instance_payload(payload):
@@ -327,6 +356,27 @@ def create_openclaw_container(name, domain, port):
     return created["Id"]
 
 
+def remove_openclaw_container(name):
+    try:
+        docker_json("GET", f"/containers/oces-{name}/json", timeout=15)
+    except RuntimeError as exc:
+        if "No such container" in str(exc) or "404" in str(exc):
+            return
+        raise
+    docker_request("DELETE", f"/containers/oces-{name}?force=true", timeout=45)
+
+
+def recreate_openclaw_container(name):
+    stack = load_stack()
+    cfg = stack["instances"].get(name)
+    if not cfg:
+        raise ValueError("unknown instance")
+    chown_instance_data(name)
+    remove_openclaw_container(name)
+    container_id = create_openclaw_container(name, cfg["domain"], int(cfg["port"]))
+    return container_id
+
+
 def create_instance(payload):
     with CREATE_LOCK:
         name, domain, port = validate_instance_payload(payload)
@@ -353,6 +403,40 @@ def create_instance(payload):
             "containerId": container_id,
             "generate": generate_output,
         }
+
+
+def configure_openai_key(instance, payload):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    if not isinstance(payload, dict):
+        raise ValueError("payload invalido")
+    api_key = str(payload.get("apiKey", "")).strip()
+    if not OPENAI_KEY_RE.match(api_key):
+        raise ValueError("API key da OpenAI invalida")
+
+    with CREATE_LOCK:
+        env_path = ROOT / "instances" / instance / ".env"
+        write_env_value(env_path, "OPENAI_API_KEY", api_key)
+        container_id = recreate_openclaw_container(instance)
+    return {"ok": True, "instance": instance, "action": "openai-key", "containerId": container_id}
+
+
+def configure_default_model(instance, payload):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    if not isinstance(payload, dict):
+        raise ValueError("payload invalido")
+    model = str(payload.get("model", "")).strip()
+    if model not in OPENAI_MODELS:
+        raise ValueError("modelo nao permitido")
+
+    output = docker_exec(
+        f"oces-{instance}",
+        ["node", "dist/index.js", "models", "set", model],
+        timeout=60,
+    )
+    docker_request("POST", f"/containers/oces-{instance}/restart?t=10", timeout=45)
+    return {"ok": True, "instance": instance, "action": "model", "model": model, "output": output}
 
 
 def pending_device_requests():
@@ -501,7 +585,7 @@ class AdminHandler(SimpleHTTPRequestHandler):
         if self.command == "POST" and parsed.path.startswith("/api/instances/"):
             parts = [part for part in parsed.path.split("/") if part]
             if len(parts) == 4 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "restart":
-                instance = parts[2]
+                instance = unquote(parts[2])
                 if instance not in known_instances():
                     self.write_json({"ok": False, "error": "unknown instance"}, status=404)
                     return
@@ -511,6 +595,34 @@ class AdminHandler(SimpleHTTPRequestHandler):
                     self.write_json({"ok": False, "error": str(exc)}, status=500)
                     return
                 self.write_json({"ok": True, "action": "restart", "instance": instance})
+                return
+
+            if len(parts) == 4 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "openai-key":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                    configured = configure_openai_key(unquote(parts[2]), payload)
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(configured)
+                return
+
+            if len(parts) == 4 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "model":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                    configured = configure_default_model(unquote(parts[2]), payload)
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(configured)
                 return
 
         self.write_json({"ok": False, "error": "not found"}, status=404)

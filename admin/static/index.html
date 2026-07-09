@@ -41,6 +41,40 @@
 
       <section id="notice" class="notice hidden"></section>
 
+      <section class="ai-config" aria-label="Configuração de IA">
+        <div>
+          <h2>IA por instância</h2>
+          <p>Atualiza autenticação OpenAI e modelo padrão sem expor a chave salva.</p>
+        </div>
+        <form id="aiConfigForm" class="ai-config-form">
+          <label>
+            Instância
+            <select id="aiInstance" name="instance"></select>
+          </label>
+          <label>
+            OpenAI API key
+            <input id="openAiKey" name="openAiKey" type="password" autocomplete="off" placeholder="colar nova API key" />
+          </label>
+          <label>
+            Modelo padrão
+            <select id="aiModel" name="model">
+              <option value="openai/gpt-5.5">openai/gpt-5.5</option>
+              <option value="openai/gpt-5.5-mini">openai/gpt-5.5-mini</option>
+              <option value="openai/gpt-5.5-nano">openai/gpt-5.5-nano</option>
+              <option value="openai/gpt-5.4">openai/gpt-5.4</option>
+              <option value="openai/gpt-5.4-mini">openai/gpt-5.4-mini</option>
+              <option value="openai/gpt-5.4-nano">openai/gpt-5.4-nano</option>
+              <option value="openai/gpt-5">openai/gpt-5</option>
+              <option value="openai/gpt-5-mini">openai/gpt-5-mini</option>
+              <option value="openai/gpt-5-nano">openai/gpt-5-nano</option>
+              <option value="openai/chat-latest">openai/chat-latest</option>
+            </select>
+          </label>
+          <button id="saveOpenAiKey" type="button">Salvar API key</button>
+          <button id="saveAiModel" type="button">Aplicar modelo</button>
+        </form>
+      </section>
+
       <section class="creator" aria-label="Criar instância">
         <div>
           <h2>Nova instância</h2>

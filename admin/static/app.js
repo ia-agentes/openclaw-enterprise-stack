@@ -16,6 +16,12 @@ const createInstanceButton = document.querySelector("#createInstance");
 const newName = document.querySelector("#newName");
 const newDomain = document.querySelector("#newDomain");
 const newPort = document.querySelector("#newPort");
+const aiConfigForm = document.querySelector("#aiConfigForm");
+const aiInstance = document.querySelector("#aiInstance");
+const openAiKey = document.querySelector("#openAiKey");
+const aiModel = document.querySelector("#aiModel");
+const saveOpenAiKey = document.querySelector("#saveOpenAiKey");
+const saveAiModel = document.querySelector("#saveAiModel");
 const refreshPending = document.querySelector("#refreshPending");
 const pendingAccessList = document.querySelector("#pendingAccessList");
 
@@ -30,6 +36,9 @@ saveToken.addEventListener("click", () => {
 refreshAll.addEventListener("click", () => loadStatus());
 refreshPending.addEventListener("click", () => loadPendingAccess());
 createInstanceForm.addEventListener("submit", createInstance);
+saveOpenAiKey.addEventListener("click", configureOpenAiKey);
+saveAiModel.addEventListener("click", configureAiModel);
+aiConfigForm.addEventListener("submit", (event) => event.preventDefault());
 newName.addEventListener("input", () => {
   if (!newDomain.value.trim()) {
     newDomain.value = suggestedDomain(newName.value.trim(), state.data?.instances || []);
@@ -206,6 +215,7 @@ function render(data) {
 
   cards.innerHTML = instances.map(renderCard).join("");
   rows.innerHTML = instances.map(renderRow).join("");
+  fillAiInstances(instances);
 
   document.querySelectorAll("[data-refresh-instance]").forEach((button) => {
     button.addEventListener("click", () => loadStatus(button.dataset.refreshInstance));
@@ -222,6 +232,21 @@ function render(data) {
   document.querySelectorAll("[data-restart-instance]").forEach((button) => {
     button.addEventListener("click", () => restartInstance(button.dataset.restartInstance));
   });
+}
+
+function fillAiInstances(instances) {
+  const selected = aiInstance.value;
+  aiInstance.innerHTML = instances
+    .map((item) => `<option value="${escapeAttribute(item.name)}">${escapeHtml(title(item.name))}</option>`)
+    .join("");
+  if (instances.some((item) => item.name === selected)) {
+    aiInstance.value = selected;
+  }
+  const current = instances.find((item) => item.name === aiInstance.value);
+  const currentModel = current?.models?.default;
+  if (currentModel && Array.from(aiModel.options).some((option) => option.value === currentModel)) {
+    aiModel.value = currentModel;
+  }
 }
 
 function renderCard(item) {
@@ -290,6 +315,59 @@ async function restartInstance(instance) {
   } catch (error) {
     setNotice(readableError(error));
   } finally {
+    refreshAll.disabled = false;
+  }
+}
+
+async function configureOpenAiKey() {
+  const instance = aiInstance.value;
+  const apiKey = openAiKey.value.trim();
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  if (!apiKey) {
+    setNotice("Cole a nova OpenAI API key antes de salvar.");
+    return;
+  }
+  if (!window.confirm(`Salvar nova API key da OpenAI em ${title(instance)} e recriar o container?`)) return;
+
+  saveOpenAiKey.disabled = true;
+  refreshAll.disabled = true;
+  setNotice(`Atualizando API key em ${title(instance)}...`);
+  try {
+    await apiJsonPost(`/api/instances/${encodeURIComponent(instance)}/openai-key`, { apiKey });
+    openAiKey.value = "";
+    setNotice(`API key salva em ${title(instance)}. Atualizando status em alguns segundos.`);
+    window.setTimeout(() => loadStatus(instance), 8000);
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    saveOpenAiKey.disabled = false;
+    refreshAll.disabled = false;
+  }
+}
+
+async function configureAiModel() {
+  const instance = aiInstance.value;
+  const model = aiModel.value;
+  if (!instance || !model) {
+    setNotice("Selecione uma instância e um modelo.");
+    return;
+  }
+  if (!window.confirm(`Aplicar ${model} como modelo padrão de ${title(instance)}?`)) return;
+
+  saveAiModel.disabled = true;
+  refreshAll.disabled = true;
+  setNotice(`Aplicando modelo em ${title(instance)}...`);
+  try {
+    await apiJsonPost(`/api/instances/${encodeURIComponent(instance)}/model`, { model });
+    setNotice(`Modelo aplicado em ${title(instance)}. Atualizando status em alguns segundos.`);
+    window.setTimeout(() => loadStatus(instance), 8000);
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    saveAiModel.disabled = false;
     refreshAll.disabled = false;
   }
 }
