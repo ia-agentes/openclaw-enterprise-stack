@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>OpenClaw Enterprise Stack</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <main class="shell">
+      <header class="topbar">
+        <div>
+          <p class="eyebrow">OpenClaw Enterprise Stack</p>
+          <h1>Instâncias</h1>
+        </div>
+        <div class="actions">
+          <input id="tokenInput" type="password" autocomplete="off" placeholder="Token admin" />
+          <button id="saveToken" type="button">Salvar token</button>
+          <button id="refreshAll" type="button">Atualizar</button>
+        </div>
+      </header>
+
+      <section class="summary" aria-label="Resumo">
+        <div>
+          <span id="countTotal">0</span>
+          <small>instâncias</small>
+        </div>
+        <div>
+          <span id="countHealthy">0</span>
+          <small>saudáveis</small>
+        </div>
+        <div>
+          <span id="countTelegram">0</span>
+          <small>Telegram OK</small>
+        </div>
+        <div>
+          <span id="countWhatsapp">0</span>
+          <small>WhatsApp OK</small>
+        </div>
+      </section>
+
+      <section id="notice" class="notice hidden"></section>
+      <section id="cards" class="cards" aria-label="Cards de instâncias"></section>
+
+      <section class="table-wrap" aria-label="Tabela de instâncias">
+        <table>
+          <thead>
+            <tr>
+              <th>Instância</th>
+              <th>Gateway</th>
+              <th>Versão</th>
+              <th>Modelo</th>
+              <th>OpenAI</th>
+              <th>Telegram</th>
+              <th>WhatsApp</th>
+              <th>Ações</th>
+            </tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </section>
+    </main>
+    <script src="/app.js"></script>
+  </body>
+</html>

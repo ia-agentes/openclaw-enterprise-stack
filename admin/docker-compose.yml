@@ -1,0 +1,42 @@
+services:
+
+  dashboard:
+
+    build:
+      context: ..
+      dockerfile: admin/Dockerfile
+
+    container_name: oces-dashboard
+
+    restart: unless-stopped
+
+    environment:
+      OCES_ADMIN_TOKEN: ${OCES_ADMIN_TOKEN:?configure OCES_ADMIN_TOKEN in admin/.env}
+      OCES_ADMIN_PORT: 8080
+
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ..:/app:ro
+
+    networks:
+      - oces_proxy
+
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=oces_proxy
+      - traefik.http.routers.oces-dashboard.rule=Host(`${OCES_DASHBOARD_DOMAIN}`)
+      - traefik.http.routers.oces-dashboard.entrypoints=websecure
+      - traefik.http.routers.oces-dashboard.tls.certresolver=letsencrypt
+      - traefik.http.routers.oces-dashboard.middlewares=security@file,gzip@file
+      - traefik.http.services.oces-dashboard.loadbalancer.server.port=8080
+
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+networks:
+  oces_proxy:
+    external: true

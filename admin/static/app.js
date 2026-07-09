@@ -1,0 +1,211 @@
+const state = {
+  token: localStorage.getItem("ocesAdminToken") || "",
+  loading: false,
+  data: null,
+};
+
+const tokenInput = document.querySelector("#tokenInput");
+const saveToken = document.querySelector("#saveToken");
+const refreshAll = document.querySelector("#refreshAll");
+const cards = document.querySelector("#cards");
+const rows = document.querySelector("#rows");
+const notice = document.querySelector("#notice");
+
+tokenInput.value = state.token;
+
+saveToken.addEventListener("click", () => {
+  state.token = tokenInput.value.trim();
+  localStorage.setItem("ocesAdminToken", state.token);
+  loadStatus();
+});
+
+refreshAll.addEventListener("click", () => loadStatus());
+
+async function api(path) {
+  const headers = {};
+  if (state.token) headers.Authorization = `Bearer ${state.token}`;
+  const response = await fetch(path, { headers, cache: "no-store" });
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(text || `HTTP ${response.status}`);
+  }
+  return response.json();
+}
+
+async function loadStatus(instance = null) {
+  setNotice("");
+  state.loading = true;
+  refreshAll.disabled = true;
+  try {
+    const url = instance ? `/api/status?instance=${encodeURIComponent(instance)}` : "/api/status";
+    const data = await api(url);
+    if (instance && state.data) {
+      const updated = data.instances[0];
+      state.data.instances = state.data.instances.map((item) =>
+        item.name === instance ? updated : item,
+      );
+      state.data.generatedAt = data.generatedAt;
+    } else {
+      state.data = data;
+    }
+    render(state.data);
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    state.loading = false;
+    refreshAll.disabled = false;
+  }
+}
+
+function render(data) {
+  const instances = data.instances || [];
+  document.querySelector("#countTotal").textContent = instances.length;
+  document.querySelector("#countHealthy").textContent = instances.filter(isHealthy).length;
+  document.querySelector("#countTelegram").textContent = instances.filter((item) =>
+    channelOk(item, "telegram"),
+  ).length;
+  document.querySelector("#countWhatsapp").textContent = instances.filter((item) =>
+    channelOk(item, "whatsapp"),
+  ).length;
+
+  cards.innerHTML = instances.map(renderCard).join("");
+  rows.innerHTML = instances.map(renderRow).join("");
+
+  document.querySelectorAll("[data-refresh-instance]").forEach((button) => {
+    button.addEventListener("click", () => loadStatus(button.dataset.refreshInstance));
+  });
+}
+
+function renderCard(item) {
+  const docker = item.docker || {};
+  const health = item.publicHealth || {};
+  const channels = item.channels || {};
+  return `
+    <article class="card">
+      <div class="card-head">
+        <div>
+          <h2>${escapeHtml(title(item.name))}</h2>
+          <div class="domain">${escapeHtml(item.domain)}</div>
+        </div>
+        ${gatewayPill(item)}
+      </div>
+      <div class="metrics">
+        ${metric("Container", `${docker.status || "-"} / ${docker.health || "-"}`)}
+        ${metric("HTTP", health.status ? String(health.status) : "-")}
+        ${metric("Versão", versionText(item))}
+        ${metric("Modelo", modelText(item))}
+        ${metric("Telegram", channelPill(channels.telegram))}
+        ${metric("WhatsApp", channelPill(channels.whatsapp))}
+      </div>
+    </article>
+  `;
+}
+
+function renderRow(item) {
+  const channels = item.channels || {};
+  const models = item.models || {};
+  return `
+    <tr>
+      <td>
+        <div class="row-title">${escapeHtml(title(item.name))}</div>
+        <div class="domain">${escapeHtml(item.domain)}</div>
+      </td>
+      <td>${gatewayPill(item)}</td>
+      <td>${escapeHtml(versionText(item))}</td>
+      <td>${escapeHtml(modelText(item))}</td>
+      <td>${openAiPill(models.openai)}</td>
+      <td>${channelPill(channels.telegram)}</td>
+      <td>${channelPill(channels.whatsapp)}</td>
+      <td>
+        <div class="row-actions">
+          <a href="${escapeAttribute(item.url)}" target="_blank" rel="noreferrer">Abrir</a>
+          <button type="button" data-refresh-instance="${escapeAttribute(item.name)}">Validar</button>
+        </div>
+      </td>
+    </tr>
+  `;
+}
+
+function metric(label, value) {
+  return `
+    <div class="metric">
+      <span>${escapeHtml(label)}</span>
+      <span class="value">${typeof value === "string" ? escapeHtml(value) : value}</span>
+    </div>
+  `;
+}
+
+function gatewayPill(item) {
+  if (isHealthy(item)) return pill("ok", "Online");
+  if (item.docker?.running) return pill("warn", "Parcial");
+  return pill("bad", "Offline");
+}
+
+function openAiPill(openai = {}) {
+  if (openai.apiKey) return pill("ok", "API key");
+  if (openai.oauth) return pill("warn", "OAuth");
+  return pill("bad", "Sem auth");
+}
+
+function channelPill(channel = {}) {
+  if (!channel.present) return pill("idle", "Ausente");
+  if (channel.connected || channel.linked || channel.lastProbeOk) return pill("ok", "Conectado");
+  if (channel.configured) return pill("warn", channel.statusState || channel.healthState || "Pendente");
+  return pill("idle", channel.statusState || "Não configurado");
+}
+
+function pill(kind, label) {
+  return `<span class="pill ${kind}">${escapeHtml(label)}</span>`;
+}
+
+function isHealthy(item) {
+  return item.docker?.running && item.docker?.health === "healthy" && item.publicHealth?.ok;
+}
+
+function channelOk(item, channel) {
+  const current = item.channels?.[channel];
+  return Boolean(current?.connected || current?.linked || current?.lastProbeOk);
+}
+
+function versionText(item) {
+  const version = item.version?.version || "-";
+  return version.replace(/^OpenClaw\s+/, "");
+}
+
+function modelText(item) {
+  return item.models?.default || "-";
+}
+
+function title(value) {
+  if (value === "te") return "TE";
+  if (value === "dp") return "DP";
+  return value.charAt(0).toUpperCase() + value.slice(1);
+}
+
+function setNotice(message) {
+  notice.textContent = message;
+  notice.classList.toggle("hidden", !message);
+}
+
+function readableError(error) {
+  const text = String(error?.message || error);
+  if (text.includes("unauthorized")) {
+    return "Token administrativo inválido ou ausente.";
+  }
+  return text;
+}
+
+function escapeHtml(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function escapeAttribute(value) {
+  return escapeHtml(value).replaceAll("`", "&#096;");
+}
+
+loadStatus();

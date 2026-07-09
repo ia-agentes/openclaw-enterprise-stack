@@ -1,0 +1,7 @@
+*
+!admin/
+!admin/**
+!config/
+!config/stack.yml
+!scripts/
+!scripts/status.py

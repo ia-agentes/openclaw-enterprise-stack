@@ -28,8 +28,20 @@ restart)
     docker compose -f "$ROOT/proxy/docker-compose.yml" up -d
 ;;
 
+dashboard)
+    if [ ! -f "$ROOT/admin/.env" ]; then
+        echo "Arquivo admin/.env não encontrado. Copie admin/.env.example e configure OCES_ADMIN_TOKEN." >&2
+        exit 1
+    fi
+    docker compose \
+        -f "$ROOT/admin/docker-compose.yml" \
+        --env-file "$ROOT/admin/.env" \
+        up -d --build
+;;
+
 status)
-    docker ps --filter "name=oces-" --format "table {{.Names}}\t{{.Image}}\t{{.Status}}\t{{.Ports}}"
+    shift
+    python3 "$ROOT/scripts/status.py" "$@"
 ;;
 
 logs)
@@ -74,7 +86,11 @@ echo " oces restore"
 
 echo " oces restart"
 
+echo " oces dashboard"
+
 echo " oces status"
+
+echo " oces status --json"
 
 echo " oces logs"
 
