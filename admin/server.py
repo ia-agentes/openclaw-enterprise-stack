@@ -75,6 +75,29 @@ def docker_request(method, path, payload=None, timeout=30):
         conn.close()
 
 
+def docker_request_bytes(method, path, payload=None, timeout=30):
+    if not os.path.exists(DOCKER_SOCKET):
+        raise RuntimeError("docker socket unavailable")
+
+    conn = UnixHTTPConnection(DOCKER_SOCKET, timeout=timeout)
+    body = None
+    headers = {"Host": "docker"}
+    if payload is not None:
+        body = json.dumps(payload).encode("utf-8")
+        headers["Content-Type"] = "application/json"
+        headers["Content-Length"] = str(len(body))
+    try:
+        conn.request(method, path, body=body, headers=headers)
+        response = conn.getresponse()
+        body = response.read()
+        if response.status >= 400:
+            message = body.decode("utf-8", errors="replace").strip()
+            raise RuntimeError(message or f"Docker API HTTP {response.status}")
+        return response.status, body
+    finally:
+        conn.close()
+
+
 def docker_json(method, path, payload=None, timeout=30):
     status, body = docker_request(method, path, payload=payload, timeout=timeout)
     if not body:
@@ -83,7 +106,7 @@ def docker_json(method, path, payload=None, timeout=30):
 
 
 def docker_demux(data):
-    raw = data.encode("latin1", errors="ignore")
+    raw = data if isinstance(data, bytes) else data.encode("latin1", errors="ignore")
     output = bytearray()
     index = 0
     while index + 8 <= len(raw):
@@ -95,7 +118,7 @@ def docker_demux(data):
         index += size
     if output:
         return output.decode("utf-8", errors="replace")
-    return data
+    return raw.decode("utf-8", errors="replace")
 
 
 def docker_exec(container, cmd, timeout=30):
@@ -111,7 +134,7 @@ def docker_exec(container, cmd, timeout=30):
         timeout=timeout,
     )
     exec_id = created["Id"]
-    _, body = docker_request(
+    _, body = docker_request_bytes(
         "POST",
         f"/exec/{exec_id}/start",
         payload={"Detach": False, "Tty": False},
@@ -610,7 +633,7 @@ def start_openai_oauth(instance):
     if instance not in known_instances():
         raise ValueError("unknown instance")
     script = r'''
-set -eu
+set -u
 dir=/tmp/oces-openai-oauth
 mkdir -p "$dir"
 if [ -s "$dir/pid" ] && kill -0 "$(cat "$dir/pid")" 2>/dev/null; then
@@ -619,7 +642,11 @@ if [ -s "$dir/pid" ] && kill -0 "$(cat "$dir/pid")" 2>/dev/null; then
 fi
 rm -f "$dir/log" "$dir/exit" "$dir/pid"
 (
-  node dist/index.js models auth login --provider openai --device-code
+  if command -v script >/dev/null 2>&1; then
+    script -q -e -c "node dist/index.js models auth login --provider openai --device-code" /dev/null
+  else
+    node dist/index.js models auth login --provider openai --device-code
+  fi
   code=$?
   echo "$code" > "$dir/exit"
   exit "$code"
@@ -661,10 +688,15 @@ log = log
   .replace(/sk-[A-Za-z0-9_-]+/g, "sk-***")
   .replace(/(access_token|refresh_token)["'=:\s]+[A-Za-z0-9._-]+/gi, "$1=***");
 const links = [...new Set(log.match(/https?:\/\/[^\s)]+/g) || [])].slice(0, 6);
-console.log(JSON.stringify({ running, pid: pid || null, exitCode, log, links }));
+console.log("__OCES_JSON__" + JSON.stringify({ running, pid: pid || null, exitCode, log, links }));
 '''
     output = docker_exec(f"oces-{instance}", ["node", "-e", script], timeout=15)
-    data = json.loads(output or "{}")
+    marker = "__OCES_JSON__"
+    payload = output.rsplit(marker, 1)[-1] if marker in output else output
+    json_start = payload.find("{")
+    if json_start >= 0:
+        payload = payload[json_start:]
+    data, _ = json.JSONDecoder().raw_decode(payload or "{}")
     data.update({"ok": True, "instance": instance, "action": "openai-oauth-status"})
     return data
 
