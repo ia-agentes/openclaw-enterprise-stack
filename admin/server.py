@@ -502,6 +502,72 @@ console.log(JSON.stringify({ running, pid: pid || null, exitCode, log, links }))
     return data
 
 
+def start_whatsapp_login(instance):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    script = r'''
+set -eu
+dir=/tmp/oces-whatsapp-login
+mkdir -p "$dir"
+if [ -s "$dir/pid" ] && kill -0 "$(cat "$dir/pid")" 2>/dev/null; then
+  printf '{"started":false,"running":true,"pid":%s}\n' "$(cat "$dir/pid")"
+  exit 0
+fi
+rm -f "$dir/log" "$dir/exit" "$dir/pid"
+(
+  if command -v script >/dev/null 2>&1; then
+    script -q -e -c "openclaw channels login --channel whatsapp --verbose" /dev/null
+  else
+    openclaw channels login --channel whatsapp --verbose
+  fi
+  code=$?
+  echo "$code" > "$dir/exit"
+  exit "$code"
+) > "$dir/log" 2>&1 &
+pid=$!
+echo "$pid" > "$dir/pid"
+printf '{"started":true,"running":true,"pid":%s}\n' "$pid"
+'''
+    output = docker_exec(f"oces-{instance}", ["sh", "-lc", script], timeout=15)
+    try:
+        data = json.loads(output)
+    except json.JSONDecodeError:
+        data = {"started": True, "running": True, "output": output}
+    data.update({"ok": True, "instance": instance, "action": "whatsapp-login-start"})
+    return data
+
+
+def whatsapp_login_status(instance):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    script = r'''
+const fs = require("node:fs");
+const { spawnSync } = require("node:child_process");
+const dir = "/tmp/oces-whatsapp-login";
+const read = (name) => {
+  try { return fs.readFileSync(`${dir}/${name}`, "utf8"); }
+  catch { return ""; }
+};
+const pid = read("pid").trim();
+let running = false;
+if (pid) {
+  const probe = spawnSync("kill", ["-0", pid], { stdio: "ignore" });
+  running = probe.status === 0;
+}
+const exitRaw = read("exit").trim();
+const exitCode = exitRaw ? Number(exitRaw) : null;
+let log = read("log");
+log = log
+  .replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "")
+  .replace(/\r/g, "");
+console.log(JSON.stringify({ running, pid: pid || null, exitCode, log }));
+'''
+    output = docker_exec(f"oces-{instance}", ["node", "-e", script], timeout=15)
+    data = json.loads(output or "{}")
+    data.update({"ok": True, "instance": instance, "action": "whatsapp-login-status"})
+    return data
+
+
 def pending_device_requests():
     script = r'''
 const fs = require("node:fs");
@@ -647,6 +713,46 @@ class AdminHandler(SimpleHTTPRequestHandler):
 
         if parsed.path.startswith("/api/instances/"):
             parts = [part for part in parsed.path.split("/") if part]
+            if (
+                len(parts) == 6
+                and parts[0] == "api"
+                and parts[1] == "instances"
+                and parts[3] == "channels"
+                and parts[4] == "whatsapp"
+                and parts[5] == "login-status"
+                and self.command == "GET"
+            ):
+                try:
+                    status = whatsapp_login_status(unquote(parts[2]))
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(status)
+                return
+
+            if (
+                len(parts) == 6
+                and parts[0] == "api"
+                and parts[1] == "instances"
+                and parts[3] == "channels"
+                and parts[4] == "whatsapp"
+                and parts[5] == "login-start"
+                and self.command == "POST"
+            ):
+                try:
+                    started = start_whatsapp_login(unquote(parts[2]))
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(started)
+                return
+
             if (
                 len(parts) == 6
                 and parts[0] == "api"

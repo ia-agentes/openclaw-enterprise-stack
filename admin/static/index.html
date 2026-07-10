@@ -100,6 +100,23 @@
         </form>
       </section>
 
+      <section class="channel-config" aria-label="Configuração de WhatsApp">
+        <div>
+          <h2>WhatsApp por instância</h2>
+          <p>Inicia o pareamento por QR Code e valida o estado do canal.</p>
+        </div>
+        <form id="whatsappConfigForm" class="channel-config-form">
+          <label>
+            Instância
+            <select id="whatsappInstance" name="instance"></select>
+          </label>
+          <button id="startWhatsappLogin" type="button">Vincular WhatsApp</button>
+          <button id="refreshWhatsappLogin" type="button">Ver QR/status</button>
+          <button id="validateWhatsapp" type="button">Validar WhatsApp</button>
+        </form>
+        <div id="whatsappLoginPanel" class="terminal-panel hidden"></div>
+      </section>
+
       <section class="pending-access" aria-label="Acessos pendentes">
         <div class="section-head">
           <div>

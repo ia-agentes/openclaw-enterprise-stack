@@ -113,6 +113,7 @@ h1 {
 .summary > div,
 .ai-config,
 .creator,
+.channel-config,
 .pending-access,
 .card,
 .table-wrap,
@@ -227,7 +228,8 @@ h1 {
   font-size: 13px;
 }
 
-.oauth-panel pre {
+.oauth-panel pre,
+.terminal-panel pre {
   max-height: 220px;
   overflow: auto;
   margin: 0;
@@ -240,6 +242,68 @@ h1 {
   line-height: 1.45;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+}
+
+.channel-config {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.7fr) minmax(0, 2fr);
+  align-items: end;
+  gap: 14px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.channel-config h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.channel-config p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.channel-config-form {
+  display: grid;
+  grid-template-columns: minmax(150px, 1fr) repeat(3, auto);
+  gap: 10px;
+  align-items: end;
+}
+
+.channel-config-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.channel-config-form select {
+  width: 100%;
+  min-width: 0;
+}
+
+.channel-config-form button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+}
+
+.terminal-panel {
+  grid-column: 2;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.terminal-panel pre {
+  max-height: 460px;
+  font-size: 13px;
+  line-height: 1.15;
+  white-space: pre;
+  overflow-wrap: normal;
 }
 
 .creator {
@@ -546,6 +610,9 @@ tr:last-child td {
   .oauth-panel,
   .creator,
   .creator-form,
+  .channel-config,
+  .channel-config-form,
+  .terminal-panel,
   .pending-item {
     grid-template-columns: 1fr;
   }

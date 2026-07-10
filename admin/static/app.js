@@ -25,6 +25,12 @@ const saveAiModel = document.querySelector("#saveAiModel");
 const startOpenAiOAuth = document.querySelector("#startOpenAiOAuth");
 const refreshOpenAiOAuth = document.querySelector("#refreshOpenAiOAuth");
 const openAiOAuthPanel = document.querySelector("#openAiOAuthPanel");
+const whatsappConfigForm = document.querySelector("#whatsappConfigForm");
+const whatsappInstance = document.querySelector("#whatsappInstance");
+const startWhatsappLogin = document.querySelector("#startWhatsappLogin");
+const refreshWhatsappLogin = document.querySelector("#refreshWhatsappLogin");
+const validateWhatsapp = document.querySelector("#validateWhatsapp");
+const whatsappLoginPanel = document.querySelector("#whatsappLoginPanel");
 const refreshPending = document.querySelector("#refreshPending");
 const pendingAccessList = document.querySelector("#pendingAccessList");
 
@@ -44,6 +50,10 @@ saveAiModel.addEventListener("click", configureAiModel);
 startOpenAiOAuth.addEventListener("click", startOAuthLogin);
 refreshOpenAiOAuth.addEventListener("click", refreshOAuthLogin);
 aiConfigForm.addEventListener("submit", (event) => event.preventDefault());
+startWhatsappLogin.addEventListener("click", startWhatsAppPairing);
+refreshWhatsappLogin.addEventListener("click", refreshWhatsAppPairing);
+validateWhatsapp.addEventListener("click", validateWhatsApp);
+whatsappConfigForm.addEventListener("submit", (event) => event.preventDefault());
 newName.addEventListener("input", () => {
   if (!newDomain.value.trim()) {
     newDomain.value = suggestedDomain(newName.value.trim(), state.data?.instances || []);
@@ -221,6 +231,7 @@ function render(data) {
   cards.innerHTML = instances.map(renderCard).join("");
   rows.innerHTML = instances.map(renderRow).join("");
   fillAiInstances(instances);
+  fillWhatsAppInstances(instances);
 
   document.querySelectorAll("[data-refresh-instance]").forEach((button) => {
     button.addEventListener("click", () => loadStatus(button.dataset.refreshInstance));
@@ -229,8 +240,13 @@ function render(data) {
   document.querySelectorAll("[data-validate-channel]").forEach((button) => {
     button.addEventListener("click", async () => {
       const label = button.dataset.validateChannel === "whatsapp" ? "WhatsApp" : "Telegram";
-      await loadStatus(button.dataset.instance);
-      setNotice(`${label} validado para ${title(button.dataset.instance)}.`);
+      if (button.dataset.validateChannel === "whatsapp") {
+        whatsappInstance.value = button.dataset.instance;
+        await refreshWhatsAppPairing();
+      } else {
+        await loadStatus(button.dataset.instance);
+        setNotice(`${label} validado para ${title(button.dataset.instance)}.`);
+      }
     });
   });
 
@@ -251,6 +267,16 @@ function fillAiInstances(instances) {
   const currentModel = current?.models?.default;
   if (currentModel && Array.from(aiModel.options).some((option) => option.value === currentModel)) {
     aiModel.value = currentModel;
+  }
+}
+
+function fillWhatsAppInstances(instances) {
+  const selected = whatsappInstance.value;
+  whatsappInstance.innerHTML = instances
+    .map((item) => `<option value="${escapeAttribute(item.name)}">${escapeHtml(title(item.name))}</option>`)
+    .join("");
+  if (instances.some((item) => item.name === selected)) {
+    whatsappInstance.value = selected;
   }
 }
 
@@ -434,6 +460,81 @@ function renderOAuthPanel(data) {
       <span>${data.exitCode === null || data.exitCode === undefined ? "" : `exit ${escapeHtml(data.exitCode)}`}</span>
     </div>
     ${links ? `<div class="oauth-links">${links}</div>` : ""}
+    <pre>${escapeHtml(log)}</pre>
+  `;
+}
+
+async function startWhatsAppPairing() {
+  const instance = whatsappInstance.value;
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  if (!window.confirm(`Iniciar pareamento do WhatsApp em ${title(instance)}?`)) return;
+
+  startWhatsappLogin.disabled = true;
+  refreshWhatsappLogin.disabled = true;
+  setNotice(`Iniciando pareamento do WhatsApp em ${title(instance)}...`);
+  try {
+    await apiPost(`/api/instances/${encodeURIComponent(instance)}/channels/whatsapp/login-start`);
+    setNotice(`Pareamento iniciado em ${title(instance)}. Escaneie o QR Code exibido abaixo.`);
+    await refreshWhatsAppPairing();
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    startWhatsappLogin.disabled = false;
+    refreshWhatsappLogin.disabled = false;
+  }
+}
+
+async function refreshWhatsAppPairing() {
+  const instance = whatsappInstance.value;
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  refreshWhatsappLogin.disabled = true;
+  try {
+    const data = await api(`/api/instances/${encodeURIComponent(instance)}/channels/whatsapp/login-status`);
+    renderWhatsAppPanel(data);
+    if (data.exitCode === 0) {
+      setNotice(`Pareamento do WhatsApp concluído em ${title(instance)}.`);
+      window.setTimeout(() => loadStatus(instance), 2500);
+    }
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    refreshWhatsappLogin.disabled = false;
+  }
+}
+
+async function validateWhatsApp() {
+  const instance = whatsappInstance.value;
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  await loadStatus(instance);
+  const current = state.data?.instances?.find((item) => item.name === instance);
+  const whatsapp = current?.channels?.whatsapp || {};
+  if (channelOk(current || {}, "whatsapp")) {
+    setNotice(`WhatsApp conectado em ${title(instance)}.`);
+  } else if (whatsapp.configured) {
+    setNotice(`WhatsApp configurado em ${title(instance)}, mas ainda não conectado.`);
+  } else {
+    setNotice(`WhatsApp ainda não configurado em ${title(instance)}.`);
+  }
+}
+
+function renderWhatsAppPanel(data) {
+  const status = data.running ? "Aguardando leitura do QR Code" : data.exitCode === 0 ? "Concluído" : "Parado";
+  const log = data.log || "Nenhum pareamento de WhatsApp iniciado nesta instância.";
+  whatsappLoginPanel.classList.remove("hidden");
+  whatsappLoginPanel.innerHTML = `
+    <div class="oauth-status">
+      <strong>${escapeHtml(status)}</strong>
+      <span>${data.exitCode === null || data.exitCode === undefined ? "" : `exit ${escapeHtml(data.exitCode)}`}</span>
+    </div>
     <pre>${escapeHtml(log)}</pre>
   `;
 }
