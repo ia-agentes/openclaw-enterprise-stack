@@ -300,7 +300,8 @@ h1 {
 }
 
 .terminal-panel pre {
-  max-height: 460px;
+  max-height: none;
+  overflow: visible;
   font-size: 13px;
   line-height: 1.15;
   white-space: pre;
