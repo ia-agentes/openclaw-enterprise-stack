@@ -405,6 +405,24 @@ def recreate_openclaw_container(name):
     return container_id
 
 
+def ensure_default_channel_plugins(name):
+    script = r'''
+set -eu
+log=/tmp/oces-whatsapp-plugin-install.log
+if ! openclaw plugins install clawhub:@openclaw/whatsapp >"$log" 2>&1; then
+  if ! grep -qi "already exists" "$log"; then
+    cat "$log"
+    exit 1
+  fi
+fi
+cat "$log"
+openclaw plugins enable whatsapp >/dev/null 2>&1 || true
+openclaw plugins enable telegram >/dev/null 2>&1 || true
+openclaw channels add --channel whatsapp >/dev/null 2>&1 || true
+'''
+    return docker_exec(f"oces-{name}", ["sh", "-lc", script], timeout=240)
+
+
 def create_instance(payload):
     with CREATE_LOCK:
         name, domain, port = validate_instance_payload(payload)
@@ -415,6 +433,8 @@ def create_instance(payload):
             generate_output = run_generate()
             chown_instance_data(name)
             container_id = create_openclaw_container(name, domain, port)
+            plugin_output = ensure_default_channel_plugins(name)
+            docker_request("POST", f"/containers/oces-{name}/restart?t=10", timeout=45)
         except Exception:
             stack_path.write_text(previous_stack, encoding="utf-8", newline="\n")
             instance_dir = ROOT / "instances" / name
@@ -430,6 +450,7 @@ def create_instance(payload):
             "instance": {"name": name, "domain": domain, "port": port},
             "containerId": container_id,
             "generate": generate_output,
+            "plugins": plugin_output,
         }
 
 
@@ -766,6 +787,10 @@ def whatsapp_login_status(instance):
     exit_raw = docker_exec(container, ["sh", "-lc", "cat /tmp/oces-whatsapp-login/exit 2>/dev/null || true"], timeout=10).strip()
     log = docker_exec(container, ["sh", "-lc", "tail -c 70000 /tmp/oces-whatsapp-login/log 2>/dev/null || true"], timeout=20)
     log = ANSI_RE.sub("", log).replace("\r", "")
+    qr_marker = "Open the WhatsApp app"
+    qr_index = log.rfind(qr_marker)
+    if qr_index >= 0:
+        log = log[qr_index:]
     if len(log) > 70000:
         log = log[-70000:]
     env = read_env(ROOT / "instances" / instance / ".env")
