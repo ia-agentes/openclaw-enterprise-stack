@@ -171,7 +171,7 @@ h1 {
 
 .ai-config-form {
   display: grid;
-  grid-template-columns: minmax(130px, 0.7fr) minmax(240px, 1.3fr) minmax(190px, 1fr) auto auto;
+  grid-template-columns: minmax(130px, 0.7fr) minmax(240px, 1.3fr) minmax(190px, 1fr) repeat(4, auto);
   gap: 10px;
   align-items: end;
 }
@@ -194,6 +194,52 @@ h1 {
   border-color: var(--accent);
   background: var(--accent);
   color: #fff;
+}
+
+.oauth-panel {
+  grid-column: 2;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.oauth-status {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.oauth-status strong {
+  color: var(--text);
+}
+
+.oauth-links {
+  display: grid;
+  gap: 6px;
+}
+
+.oauth-links a {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+  font-size: 13px;
+}
+
+.oauth-panel pre {
+  max-height: 220px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #101828;
+  color: #f8fafc;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .creator {
@@ -497,6 +543,7 @@ tr:last-child td {
   .cards,
   .ai-config,
   .ai-config-form,
+  .oauth-panel,
   .creator,
   .creator-form,
   .pending-item {

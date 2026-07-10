@@ -22,6 +22,9 @@ const openAiKey = document.querySelector("#openAiKey");
 const aiModel = document.querySelector("#aiModel");
 const saveOpenAiKey = document.querySelector("#saveOpenAiKey");
 const saveAiModel = document.querySelector("#saveAiModel");
+const startOpenAiOAuth = document.querySelector("#startOpenAiOAuth");
+const refreshOpenAiOAuth = document.querySelector("#refreshOpenAiOAuth");
+const openAiOAuthPanel = document.querySelector("#openAiOAuthPanel");
 const refreshPending = document.querySelector("#refreshPending");
 const pendingAccessList = document.querySelector("#pendingAccessList");
 
@@ -38,6 +41,8 @@ refreshPending.addEventListener("click", () => loadPendingAccess());
 createInstanceForm.addEventListener("submit", createInstance);
 saveOpenAiKey.addEventListener("click", configureOpenAiKey);
 saveAiModel.addEventListener("click", configureAiModel);
+startOpenAiOAuth.addEventListener("click", startOAuthLogin);
+refreshOpenAiOAuth.addEventListener("click", refreshOAuthLogin);
 aiConfigForm.addEventListener("submit", (event) => event.preventDefault());
 newName.addEventListener("input", () => {
   if (!newDomain.value.trim()) {
@@ -370,6 +375,67 @@ async function configureAiModel() {
     saveAiModel.disabled = false;
     refreshAll.disabled = false;
   }
+}
+
+async function startOAuthLogin() {
+  const instance = aiInstance.value;
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  if (!window.confirm(`Iniciar login ChatGPT Plus em ${title(instance)}?`)) return;
+
+  startOpenAiOAuth.disabled = true;
+  refreshOpenAiOAuth.disabled = true;
+  setNotice(`Iniciando OAuth ChatGPT em ${title(instance)}...`);
+  try {
+    await apiPost(`/api/instances/${encodeURIComponent(instance)}/oauth/openai/start`);
+    setNotice(`OAuth iniciado em ${title(instance)}. Abra o link/código exibido abaixo.`);
+    await refreshOAuthLogin();
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    startOpenAiOAuth.disabled = false;
+    refreshOpenAiOAuth.disabled = false;
+  }
+}
+
+async function refreshOAuthLogin() {
+  const instance = aiInstance.value;
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  refreshOpenAiOAuth.disabled = true;
+  try {
+    const data = await api(`/api/instances/${encodeURIComponent(instance)}/oauth/openai/status`);
+    renderOAuthPanel(data);
+    if (data.exitCode === 0) {
+      setNotice(`OAuth ChatGPT concluído em ${title(instance)}.`);
+      window.setTimeout(() => loadStatus(instance), 2500);
+    }
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    refreshOpenAiOAuth.disabled = false;
+  }
+}
+
+function renderOAuthPanel(data) {
+  const status = data.running ? "Aguardando autorização" : data.exitCode === 0 ? "Concluído" : "Parado";
+  const links = (data.links || [])
+    .map((link) => `<a href="${escapeAttribute(link)}" target="_blank" rel="noreferrer">${escapeHtml(link)}</a>`)
+    .join("");
+  const log = data.log || "Nenhum fluxo OAuth iniciado nesta instância.";
+  openAiOAuthPanel.classList.remove("hidden");
+  openAiOAuthPanel.innerHTML = `
+    <div class="oauth-status">
+      <strong>${escapeHtml(status)}</strong>
+      <span>${data.exitCode === null || data.exitCode === undefined ? "" : `exit ${escapeHtml(data.exitCode)}`}</span>
+    </div>
+    ${links ? `<div class="oauth-links">${links}</div>` : ""}
+    <pre>${escapeHtml(log)}</pre>
+  `;
 }
 
 function metric(label, value) {

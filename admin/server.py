@@ -439,6 +439,69 @@ def configure_default_model(instance, payload):
     return {"ok": True, "instance": instance, "action": "model", "model": model, "output": output}
 
 
+def start_openai_oauth(instance):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    script = r'''
+set -eu
+dir=/tmp/oces-openai-oauth
+mkdir -p "$dir"
+if [ -s "$dir/pid" ] && kill -0 "$(cat "$dir/pid")" 2>/dev/null; then
+  printf '{"started":false,"running":true,"pid":%s}\n' "$(cat "$dir/pid")"
+  exit 0
+fi
+rm -f "$dir/log" "$dir/exit" "$dir/pid"
+(
+  node dist/index.js models auth login --provider openai --device-code
+  code=$?
+  echo "$code" > "$dir/exit"
+  exit "$code"
+) > "$dir/log" 2>&1 &
+pid=$!
+echo "$pid" > "$dir/pid"
+printf '{"started":true,"running":true,"pid":%s}\n' "$pid"
+'''
+    output = docker_exec(f"oces-{instance}", ["sh", "-lc", script], timeout=15)
+    try:
+        data = json.loads(output)
+    except json.JSONDecodeError:
+        data = {"started": True, "running": True, "output": output}
+    data.update({"ok": True, "instance": instance, "action": "openai-oauth-start"})
+    return data
+
+
+def openai_oauth_status(instance):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    script = r'''
+const fs = require("node:fs");
+const { spawnSync } = require("node:child_process");
+const dir = "/tmp/oces-openai-oauth";
+const read = (name) => {
+  try { return fs.readFileSync(`${dir}/${name}`, "utf8").trim(); }
+  catch { return ""; }
+};
+const pid = read("pid");
+let running = false;
+if (pid) {
+  const probe = spawnSync("kill", ["-0", pid], { stdio: "ignore" });
+  running = probe.status === 0;
+}
+const exitRaw = read("exit");
+const exitCode = exitRaw ? Number(exitRaw) : null;
+let log = read("log");
+log = log
+  .replace(/sk-[A-Za-z0-9_-]+/g, "sk-***")
+  .replace(/(access_token|refresh_token)["'=:\s]+[A-Za-z0-9._-]+/gi, "$1=***");
+const links = [...new Set(log.match(/https?:\/\/[^\s)]+/g) || [])].slice(0, 6);
+console.log(JSON.stringify({ running, pid: pid || null, exitCode, log, links }));
+'''
+    output = docker_exec(f"oces-{instance}", ["node", "-e", script], timeout=15)
+    data = json.loads(output or "{}")
+    data.update({"ok": True, "instance": instance, "action": "openai-oauth-status"})
+    return data
+
+
 def pending_device_requests():
     script = r'''
 const fs = require("node:fs");
@@ -581,6 +644,48 @@ class AdminHandler(SimpleHTTPRequestHandler):
                 return
             self.write_json(created, status=201)
             return
+
+        if parsed.path.startswith("/api/instances/"):
+            parts = [part for part in parsed.path.split("/") if part]
+            if (
+                len(parts) == 6
+                and parts[0] == "api"
+                and parts[1] == "instances"
+                and parts[3] == "oauth"
+                and parts[4] == "openai"
+                and parts[5] == "status"
+                and self.command == "GET"
+            ):
+                try:
+                    status = openai_oauth_status(unquote(parts[2]))
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(status)
+                return
+
+            if (
+                len(parts) == 6
+                and parts[0] == "api"
+                and parts[1] == "instances"
+                and parts[3] == "oauth"
+                and parts[4] == "openai"
+                and parts[5] == "start"
+                and self.command == "POST"
+            ):
+                try:
+                    started = start_openai_oauth(unquote(parts[2]))
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(started)
+                return
 
         if self.command == "POST" and parsed.path.startswith("/api/instances/"):
             parts = [part for part in parsed.path.split("/") if part]
