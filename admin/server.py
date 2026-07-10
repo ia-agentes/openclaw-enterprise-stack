@@ -25,6 +25,7 @@ REQUEST_ID_RE = re.compile(r"^[a-f0-9-]{32,40}$", re.IGNORECASE)
 OPENAI_KEY_RE = re.compile(r"^sk-[A-Za-z0-9_-]{20,}$")
 TELEGRAM_BOT_TOKEN_RE = re.compile(r"^[0-9]{6,}:[A-Za-z0-9_-]{20,}$")
 TELEGRAM_PAIRING_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{4,32}$")
+WHATSAPP_PAIRING_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{4,32}$")
 PHONE_RE = re.compile(r"^\+?[0-9]{10,15}$")
 ANSI_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 OPENAI_MODELS = {
@@ -535,6 +536,20 @@ def approve_telegram_pairing(instance, payload):
     return {"ok": True, "instance": instance, "action": "telegram-pairing-approve", "code": code, "output": output}
 
 
+def extract_pairing_requests(output):
+    if not output:
+        return []
+    parsed = json.loads(output)
+    if isinstance(parsed, list):
+        return parsed
+    if isinstance(parsed, dict):
+        for key in ("pending", "requests", "items"):
+            if isinstance(parsed.get(key), list):
+                return parsed[key]
+        return [parsed] if parsed else []
+    return []
+
+
 def configure_whatsapp_number(instance, payload):
     if instance not in known_instances():
         raise ValueError("unknown instance")
@@ -547,6 +562,48 @@ def configure_whatsapp_number(instance, payload):
     env_path = ROOT / "instances" / instance / ".env"
     write_env_value(env_path, "WHATSAPP_EXPECTED_NUMBER", number)
     return {"ok": True, "instance": instance, "action": "whatsapp-number", "number": number}
+
+
+def whatsapp_pairing_status(instance):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    output = ""
+    pending = []
+    try:
+        output = docker_exec(
+            f"oces-{instance}",
+            ["openclaw", "pairing", "list", "--channel", "whatsapp", "--json"],
+            timeout=30,
+        )
+        pending = extract_pairing_requests(output)
+    except json.JSONDecodeError:
+        pass
+    except Exception as exc:
+        output = str(exc)
+
+    return {
+        "ok": True,
+        "instance": instance,
+        "action": "whatsapp-pairing-status",
+        "pending": pending,
+        "output": ANSI_RE.sub("", output).replace("\r", ""),
+    }
+
+
+def approve_whatsapp_pairing(instance, payload):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    if not isinstance(payload, dict):
+        raise ValueError("payload invalido")
+    code = str(payload.get("code", "")).strip()
+    if not WHATSAPP_PAIRING_CODE_RE.match(code):
+        raise ValueError("codigo de pareamento invalido")
+    output = docker_exec(
+        f"oces-{instance}",
+        ["openclaw", "pairing", "approve", "whatsapp", code],
+        timeout=45,
+    )
+    return {"ok": True, "instance": instance, "action": "whatsapp-pairing-approve", "code": code, "output": output}
 
 
 def start_openai_oauth(instance):
@@ -901,6 +958,27 @@ class AdminHandler(SimpleHTTPRequestHandler):
                 return
 
             if (
+                len(parts) == 7
+                and parts[0] == "api"
+                and parts[1] == "instances"
+                and parts[3] == "channels"
+                and parts[4] == "whatsapp"
+                and parts[5] == "pairing"
+                and parts[6] == "status"
+                and self.command == "GET"
+            ):
+                try:
+                    status = whatsapp_pairing_status(unquote(parts[2]))
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(status)
+                return
+
+            if (
                 len(parts) == 6
                 and parts[0] == "api"
                 and parts[1] == "instances"
@@ -996,6 +1074,20 @@ class AdminHandler(SimpleHTTPRequestHandler):
                     length = int(self.headers.get("Content-Length", "0"))
                     payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
                     approved = approve_telegram_pairing(unquote(parts[2]), payload)
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(approved)
+                return
+
+            if len(parts) == 7 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "channels" and parts[4] == "whatsapp" and parts[5] == "pairing" and parts[6] == "approve":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                    approved = approve_whatsapp_pairing(unquote(parts[2]), payload)
                 except ValueError as exc:
                     self.write_json({"ok": False, "error": str(exc)}, status=400)
                     return

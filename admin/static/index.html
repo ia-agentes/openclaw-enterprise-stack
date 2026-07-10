@@ -135,7 +135,7 @@
           <h2>WhatsApp por instância</h2>
           <p>Inicia o pareamento por QR Code e valida o estado do canal.</p>
         </div>
-        <form id="whatsappConfigForm" class="channel-config-form">
+        <form id="whatsappConfigForm" class="channel-config-form whatsapp-config-form">
           <label>
             Instância
             <select id="whatsappInstance" name="instance"></select>
@@ -144,9 +144,14 @@
             Número esperado
             <input id="whatsappNumber" name="number" type="tel" autocomplete="off" placeholder="+5541999578125" />
           </label>
+          <label>
+            Código
+            <input id="whatsappPairingCode" name="pairingCode" type="text" autocomplete="off" placeholder="DVR8683K" />
+          </label>
           <button id="saveWhatsappNumber" type="button">Salvar número</button>
           <button id="startWhatsappLogin" type="button">Vincular WhatsApp</button>
           <button id="refreshWhatsappLogin" type="button">Ver QR/status</button>
+          <button id="approveWhatsappPairing" type="button">Aprovar código</button>
           <button id="validateWhatsapp" type="button">Validar WhatsApp</button>
         </form>
         <div id="whatsappLoginPanel" class="terminal-panel hidden"></div>

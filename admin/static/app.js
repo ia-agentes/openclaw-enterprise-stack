@@ -38,9 +38,11 @@ const telegramPairingPanel = document.querySelector("#telegramPairingPanel");
 const whatsappConfigForm = document.querySelector("#whatsappConfigForm");
 const whatsappInstance = document.querySelector("#whatsappInstance");
 const whatsappNumber = document.querySelector("#whatsappNumber");
+const whatsappPairingCode = document.querySelector("#whatsappPairingCode");
 const saveWhatsappNumber = document.querySelector("#saveWhatsappNumber");
 const startWhatsappLogin = document.querySelector("#startWhatsappLogin");
 const refreshWhatsappLogin = document.querySelector("#refreshWhatsappLogin");
+const approveWhatsappPairing = document.querySelector("#approveWhatsappPairing");
 const validateWhatsapp = document.querySelector("#validateWhatsapp");
 const whatsappLoginPanel = document.querySelector("#whatsappLoginPanel");
 const refreshPending = document.querySelector("#refreshPending");
@@ -71,6 +73,7 @@ telegramInstance.addEventListener("change", () => refreshTelegramStatus());
 startWhatsappLogin.addEventListener("click", startWhatsAppPairing);
 saveWhatsappNumber.addEventListener("click", saveWhatsAppNumber);
 refreshWhatsappLogin.addEventListener("click", refreshWhatsAppPairing);
+approveWhatsappPairing.addEventListener("click", approveWhatsAppCode);
 validateWhatsapp.addEventListener("click", validateWhatsApp);
 whatsappConfigForm.addEventListener("submit", (event) => event.preventDefault());
 whatsappInstance.addEventListener("change", () => refreshWhatsAppPairing());
@@ -690,9 +693,12 @@ async function refreshWhatsAppPairing() {
   }
   refreshWhatsappLogin.disabled = true;
   try {
-    const data = await api(`/api/instances/${encodeURIComponent(instance)}/channels/whatsapp/login-status`);
-    renderWhatsAppPanel(data);
-    if (data.exitCode === 0) {
+    const [login, pairing] = await Promise.all([
+      api(`/api/instances/${encodeURIComponent(instance)}/channels/whatsapp/login-status`),
+      api(`/api/instances/${encodeURIComponent(instance)}/channels/whatsapp/pairing/status`),
+    ]);
+    renderWhatsAppPanel({ ...login, pairing });
+    if (login.exitCode === 0) {
       setNotice(`Pareamento do WhatsApp concluído em ${title(instance)}.`);
       window.setTimeout(() => loadStatus(instance), 2500);
     }
@@ -700,6 +706,32 @@ async function refreshWhatsAppPairing() {
     setNotice(readableError(error));
   } finally {
     refreshWhatsappLogin.disabled = false;
+  }
+}
+
+async function approveWhatsAppCode() {
+  const instance = whatsappInstance.value;
+  const code = whatsappPairingCode.value.trim();
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  if (!code) {
+    setNotice("Informe o código de pareamento do WhatsApp.");
+    return;
+  }
+  approveWhatsappPairing.disabled = true;
+  setNotice(`Aprovando código WhatsApp em ${title(instance)}...`);
+  try {
+    await apiJsonPost(`/api/instances/${encodeURIComponent(instance)}/channels/whatsapp/pairing/approve`, { code });
+    whatsappPairingCode.value = "";
+    setNotice(`Código WhatsApp aprovado em ${title(instance)}.`);
+    await refreshWhatsAppPairing();
+    window.setTimeout(() => loadStatus(instance), 2500);
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    approveWhatsappPairing.disabled = false;
   }
 }
 
@@ -724,6 +756,7 @@ async function validateWhatsApp() {
 function renderWhatsAppPanel(data) {
   const status = data.running ? "Aguardando leitura do QR Code" : data.exitCode === 0 ? "Concluído" : "Parado";
   const log = data.log || "Nenhum pareamento de WhatsApp iniciado nesta instância.";
+  const pending = Array.isArray(data.pairing?.pending) ? data.pairing.pending : [];
   if (data.number !== undefined) {
     whatsappNumber.value = data.number || "";
   }
@@ -734,7 +767,43 @@ function renderWhatsAppPanel(data) {
       <span>${data.exitCode === null || data.exitCode === undefined ? "" : `exit ${escapeHtml(data.exitCode)}`}</span>
     </div>
     ${data.number ? `<div class="oauth-status"><strong>Número esperado</strong><span>${escapeHtml(data.number)}</span></div>` : ""}
+    <div class="oauth-status">
+      <strong>Autorizações WhatsApp</strong>
+      <span>${pending.length ? `${pending.length} pendente(s)` : "Nenhuma pendente"}</span>
+    </div>
+    ${
+      pending.length
+        ? `<div class="pending-list">${pending.map(renderWhatsAppPending).join("")}</div>`
+        : '<div class="empty-state">Nenhum número WhatsApp aguardando autorização.</div>'
+    }
     <pre>${escapeHtml(log)}</pre>
+  `;
+  whatsappLoginPanel.querySelectorAll("[data-whatsapp-code]").forEach((button) => {
+    button.addEventListener("click", () => {
+      whatsappPairingCode.value = button.dataset.whatsappCode;
+      approveWhatsAppCode();
+    });
+  });
+}
+
+function renderWhatsAppPending(item) {
+  const code = item.code || item.pairingCode || item.id || item.requestId || "";
+  const phone = item.phone || item.phoneNumber || item.sender || item.senderId || item.from || "";
+  const label = code || JSON.stringify(item);
+  return `
+    <div class="pending-item">
+      <div>
+        <strong>${escapeHtml(code || "Código pendente")}</strong>
+        <span>${escapeHtml(phone || "WhatsApp")}</span>
+      </div>
+      <code>${escapeHtml(label)}</code>
+      <small>${escapeHtml(item.createdAt || item.ts || item.age || "")}</small>
+      ${
+        code
+          ? `<button type="button" data-whatsapp-code="${escapeAttribute(code)}">Aprovar</button>`
+          : ""
+      }
+    </div>
   `;
 }
 

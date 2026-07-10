@@ -280,6 +280,14 @@ h1 {
     repeat(4, auto);
 }
 
+.whatsapp-config-form {
+  grid-template-columns:
+    minmax(120px, 0.7fr)
+    minmax(190px, 1fr)
+    minmax(110px, 0.7fr)
+    repeat(5, auto);
+}
+
 .channel-config-form label {
   display: grid;
   gap: 5px;
@@ -648,6 +656,7 @@ tr:last-child td {
   .channel-config-form,
   .terminal-panel,
   .telegram-config-form,
+  .whatsapp-config-form,
   .pairing-panel,
   .pending-item {
     grid-template-columns: 1fr;
