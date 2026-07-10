@@ -27,6 +27,8 @@ const refreshOpenAiOAuth = document.querySelector("#refreshOpenAiOAuth");
 const openAiOAuthPanel = document.querySelector("#openAiOAuthPanel");
 const whatsappConfigForm = document.querySelector("#whatsappConfigForm");
 const whatsappInstance = document.querySelector("#whatsappInstance");
+const whatsappNumber = document.querySelector("#whatsappNumber");
+const saveWhatsappNumber = document.querySelector("#saveWhatsappNumber");
 const startWhatsappLogin = document.querySelector("#startWhatsappLogin");
 const refreshWhatsappLogin = document.querySelector("#refreshWhatsappLogin");
 const validateWhatsapp = document.querySelector("#validateWhatsapp");
@@ -51,9 +53,11 @@ startOpenAiOAuth.addEventListener("click", startOAuthLogin);
 refreshOpenAiOAuth.addEventListener("click", refreshOAuthLogin);
 aiConfigForm.addEventListener("submit", (event) => event.preventDefault());
 startWhatsappLogin.addEventListener("click", startWhatsAppPairing);
+saveWhatsappNumber.addEventListener("click", saveWhatsAppNumber);
 refreshWhatsappLogin.addEventListener("click", refreshWhatsAppPairing);
 validateWhatsapp.addEventListener("click", validateWhatsApp);
 whatsappConfigForm.addEventListener("submit", (event) => event.preventDefault());
+whatsappInstance.addEventListener("change", () => refreshWhatsAppPairing());
 newName.addEventListener("input", () => {
   if (!newDomain.value.trim()) {
     newDomain.value = suggestedDomain(newName.value.trim(), state.data?.instances || []);
@@ -470,7 +474,9 @@ async function startWhatsAppPairing() {
     setNotice("Selecione uma instância.");
     return;
   }
-  if (!window.confirm(`Iniciar pareamento do WhatsApp em ${title(instance)}?`)) return;
+  const number = whatsappNumber.value.trim();
+  const target = number ? ` para ${number}` : "";
+  if (!window.confirm(`Iniciar pareamento do WhatsApp${target} em ${title(instance)}?`)) return;
 
   startWhatsappLogin.disabled = true;
   refreshWhatsappLogin.disabled = true;
@@ -484,6 +490,24 @@ async function startWhatsAppPairing() {
   } finally {
     startWhatsappLogin.disabled = false;
     refreshWhatsappLogin.disabled = false;
+  }
+}
+
+async function saveWhatsAppNumber() {
+  const instance = whatsappInstance.value;
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  const number = whatsappNumber.value.trim();
+  saveWhatsappNumber.disabled = true;
+  try {
+    await apiJsonPost(`/api/instances/${encodeURIComponent(instance)}/channels/whatsapp/number`, { number });
+    setNotice(number ? `Número esperado salvo para ${title(instance)}.` : `Número esperado removido de ${title(instance)}.`);
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    saveWhatsappNumber.disabled = false;
   }
 }
 
@@ -529,12 +553,16 @@ async function validateWhatsApp() {
 function renderWhatsAppPanel(data) {
   const status = data.running ? "Aguardando leitura do QR Code" : data.exitCode === 0 ? "Concluído" : "Parado";
   const log = data.log || "Nenhum pareamento de WhatsApp iniciado nesta instância.";
+  if (data.number !== undefined) {
+    whatsappNumber.value = data.number || "";
+  }
   whatsappLoginPanel.classList.remove("hidden");
   whatsappLoginPanel.innerHTML = `
     <div class="oauth-status">
       <strong>${escapeHtml(status)}</strong>
       <span>${data.exitCode === null || data.exitCode === undefined ? "" : `exit ${escapeHtml(data.exitCode)}`}</span>
     </div>
+    ${data.number ? `<div class="oauth-status"><strong>Número esperado</strong><span>${escapeHtml(data.number)}</span></div>` : ""}
     <pre>${escapeHtml(log)}</pre>
   `;
 }

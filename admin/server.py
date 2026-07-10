@@ -23,6 +23,8 @@ INSTANCE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,31}$")
 DOMAIN_RE = re.compile(r"^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$")
 REQUEST_ID_RE = re.compile(r"^[a-f0-9-]{32,40}$", re.IGNORECASE)
 OPENAI_KEY_RE = re.compile(r"^sk-[A-Za-z0-9_-]{20,}$")
+PHONE_RE = re.compile(r"^\+?[0-9]{10,15}$")
+ANSI_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 OPENAI_MODELS = {
     "openai/gpt-5.5",
     "openai/gpt-5.5-mini",
@@ -439,6 +441,20 @@ def configure_default_model(instance, payload):
     return {"ok": True, "instance": instance, "action": "model", "model": model, "output": output}
 
 
+def configure_whatsapp_number(instance, payload):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    if not isinstance(payload, dict):
+        raise ValueError("payload invalido")
+    number = str(payload.get("number", "")).strip().replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+    if number and not PHONE_RE.match(number):
+        raise ValueError("numero deve estar em formato internacional, exemplo +5541999578125")
+
+    env_path = ROOT / "instances" / instance / ".env"
+    write_env_value(env_path, "WHATSAPP_EXPECTED_NUMBER", number)
+    return {"ok": True, "instance": instance, "action": "whatsapp-number", "number": number}
+
+
 def start_openai_oauth(instance):
     if instance not in known_instances():
         raise ValueError("unknown instance")
@@ -540,32 +556,29 @@ printf '{"started":true,"running":true,"pid":%s}\n' "$pid"
 def whatsapp_login_status(instance):
     if instance not in known_instances():
         raise ValueError("unknown instance")
-    script = r'''
-const fs = require("node:fs");
-const { spawnSync } = require("node:child_process");
-const dir = "/tmp/oces-whatsapp-login";
-const read = (name) => {
-  try { return fs.readFileSync(`${dir}/${name}`, "utf8"); }
-  catch { return ""; }
-};
-const pid = read("pid").trim();
-let running = false;
-if (pid) {
-  const probe = spawnSync("kill", ["-0", pid], { stdio: "ignore" });
-  running = probe.status === 0;
-}
-const exitRaw = read("exit").trim();
-const exitCode = exitRaw ? Number(exitRaw) : null;
-let log = read("log");
-log = log
-  .replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "")
-  .replace(/\r/g, "");
-console.log(JSON.stringify({ running, pid: pid || null, exitCode, log }));
-'''
-    output = docker_exec(f"oces-{instance}", ["node", "-e", script], timeout=15)
-    data = json.loads(output or "{}")
-    data.update({"ok": True, "instance": instance, "action": "whatsapp-login-status"})
-    return data
+    container = f"oces-{instance}"
+    pid = docker_exec(container, ["sh", "-lc", "cat /tmp/oces-whatsapp-login/pid 2>/dev/null || true"], timeout=10).strip()
+    running_raw = docker_exec(
+        container,
+        ["sh", "-lc", 'pid="$(cat /tmp/oces-whatsapp-login/pid 2>/dev/null || true)"; [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && echo true || echo false'],
+        timeout=10,
+    ).strip()
+    exit_raw = docker_exec(container, ["sh", "-lc", "cat /tmp/oces-whatsapp-login/exit 2>/dev/null || true"], timeout=10).strip()
+    log = docker_exec(container, ["sh", "-lc", "tail -c 70000 /tmp/oces-whatsapp-login/log 2>/dev/null || true"], timeout=20)
+    log = ANSI_RE.sub("", log).replace("\r", "")
+    if len(log) > 70000:
+        log = log[-70000:]
+    env = read_env(ROOT / "instances" / instance / ".env")
+    return {
+        "ok": True,
+        "instance": instance,
+        "action": "whatsapp-login-status",
+        "running": running_raw == "true",
+        "pid": pid or None,
+        "exitCode": int(exit_raw) if exit_raw.isdigit() else None,
+        "log": log,
+        "number": env.get("WHATSAPP_EXPECTED_NUMBER", ""),
+    }
 
 
 def pending_device_requests():
@@ -827,6 +840,20 @@ class AdminHandler(SimpleHTTPRequestHandler):
                     length = int(self.headers.get("Content-Length", "0"))
                     payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
                     configured = configure_default_model(unquote(parts[2]), payload)
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(configured)
+                return
+
+            if len(parts) == 6 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "channels" and parts[4] == "whatsapp" and parts[5] == "number":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                    configured = configure_whatsapp_number(unquote(parts[2]), payload)
                 except ValueError as exc:
                     self.write_json({"ok": False, "error": str(exc)}, status=400)
                     return

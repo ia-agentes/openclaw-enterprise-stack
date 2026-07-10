@@ -266,7 +266,7 @@ h1 {
 
 .channel-config-form {
   display: grid;
-  grid-template-columns: minmax(150px, 1fr) repeat(3, auto);
+  grid-template-columns: minmax(140px, 0.9fr) minmax(170px, 1fr) repeat(4, auto);
   gap: 10px;
   align-items: end;
 }
@@ -279,6 +279,7 @@ h1 {
   font-weight: 650;
 }
 
+.channel-config-form input,
 .channel-config-form select {
   width: 100%;
   min-width: 0;
