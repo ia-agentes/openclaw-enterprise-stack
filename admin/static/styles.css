@@ -271,6 +271,15 @@ h1 {
   align-items: end;
 }
 
+.telegram-config-form {
+  grid-template-columns:
+    minmax(120px, 0.7fr)
+    minmax(210px, 1.2fr)
+    minmax(150px, 0.9fr)
+    minmax(110px, 0.7fr)
+    repeat(4, auto);
+}
+
 .channel-config-form label {
   display: grid;
   gap: 5px;
@@ -306,6 +315,29 @@ h1 {
   line-height: 1.15;
   white-space: pre;
   overflow-wrap: normal;
+}
+
+.pairing-panel {
+  grid-column: 2;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.pairing-panel pre {
+  max-height: 220px;
+  overflow: auto;
+  margin: 0;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #101828;
+  color: #f8fafc;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .creator {
@@ -615,6 +647,8 @@ tr:last-child td {
   .channel-config,
   .channel-config-form,
   .terminal-panel,
+  .telegram-config-form,
+  .pairing-panel,
   .pending-item {
     grid-template-columns: 1fr;
   }

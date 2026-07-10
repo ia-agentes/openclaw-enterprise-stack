@@ -100,6 +100,36 @@
         </form>
       </section>
 
+      <section class="channel-config" aria-label="Configuração de Telegram">
+        <div>
+          <h2>Telegram por instância</h2>
+          <p>Configura o bot, lista pedidos de pareamento e aprova usuários.</p>
+        </div>
+        <form id="telegramConfigForm" class="channel-config-form telegram-config-form">
+          <label>
+            Instância
+            <select id="telegramInstance" name="instance"></select>
+          </label>
+          <label>
+            Bot token
+            <input id="telegramBotToken" name="botToken" type="password" autocomplete="off" placeholder="123456:ABC..." />
+          </label>
+          <label>
+            Usuário esperado
+            <input id="telegramExpectedUser" name="expectedUser" type="text" autocomplete="off" placeholder="@usuario ou ID" />
+          </label>
+          <label>
+            Código
+            <input id="telegramPairingCode" name="pairingCode" type="text" autocomplete="off" placeholder="8VDJAVK7" />
+          </label>
+          <button id="saveTelegramConfig" type="button">Salvar bot</button>
+          <button id="refreshTelegramPairings" type="button">Ver pareamentos</button>
+          <button id="approveTelegramPairing" type="button">Aprovar código</button>
+          <button id="validateTelegram" type="button">Validar Telegram</button>
+        </form>
+        <div id="telegramPairingPanel" class="pairing-panel hidden"></div>
+      </section>
+
       <section class="channel-config" aria-label="Configuração de WhatsApp">
         <div>
           <h2>WhatsApp por instância</h2>

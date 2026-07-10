@@ -23,6 +23,8 @@ INSTANCE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,31}$")
 DOMAIN_RE = re.compile(r"^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$")
 REQUEST_ID_RE = re.compile(r"^[a-f0-9-]{32,40}$", re.IGNORECASE)
 OPENAI_KEY_RE = re.compile(r"^sk-[A-Za-z0-9_-]{20,}$")
+TELEGRAM_BOT_TOKEN_RE = re.compile(r"^[0-9]{6,}:[A-Za-z0-9_-]{20,}$")
+TELEGRAM_PAIRING_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{4,32}$")
 PHONE_RE = re.compile(r"^\+?[0-9]{10,15}$")
 ANSI_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 OPENAI_MODELS = {
@@ -441,6 +443,98 @@ def configure_default_model(instance, payload):
     return {"ok": True, "instance": instance, "action": "model", "model": model, "output": output}
 
 
+def configure_telegram(instance, payload):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    if not isinstance(payload, dict):
+        raise ValueError("payload invalido")
+    bot_token = str(payload.get("botToken", "")).strip()
+    expected_user = str(payload.get("expectedUser", "")).strip()
+
+    if bot_token and not TELEGRAM_BOT_TOKEN_RE.match(bot_token):
+        raise ValueError("token do bot Telegram invalido")
+
+    env_path = ROOT / "instances" / instance / ".env"
+    output = ""
+    with CREATE_LOCK:
+        if bot_token:
+            write_env_value(env_path, "TELEGRAM_BOT_TOKEN", bot_token)
+        write_env_value(env_path, "TELEGRAM_EXPECTED_USER", expected_user)
+        if bot_token:
+            output = docker_exec(
+                f"oces-{instance}",
+                ["openclaw", "channels", "add", "--channel", "telegram", "--token", bot_token],
+                timeout=60,
+            )
+            docker_request("POST", f"/containers/oces-{instance}/restart?t=10", timeout=45)
+
+    return {
+        "ok": True,
+        "instance": instance,
+        "action": "telegram-config",
+        "configured": bool(bot_token or read_env(env_path).get("TELEGRAM_BOT_TOKEN")),
+        "expectedUser": expected_user,
+        "output": output,
+    }
+
+
+def telegram_pairing_status(instance):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    env = read_env(ROOT / "instances" / instance / ".env")
+    output = ""
+    pending = []
+    try:
+        output = docker_exec(
+            f"oces-{instance}",
+            ["openclaw", "pairing", "list", "--channel", "telegram", "--json"],
+            timeout=30,
+        )
+        if output:
+            parsed = json.loads(output)
+            if isinstance(parsed, list):
+                pending = parsed
+            elif isinstance(parsed, dict):
+                found_collection = False
+                for key in ("pending", "requests", "items"):
+                    if isinstance(parsed.get(key), list):
+                        pending = parsed[key]
+                        found_collection = True
+                        break
+                if not found_collection and parsed:
+                    pending = [parsed]
+    except json.JSONDecodeError:
+        pass
+    except Exception as exc:
+        output = str(exc)
+
+    return {
+        "ok": True,
+        "instance": instance,
+        "action": "telegram-pairing-status",
+        "configured": bool(env.get("TELEGRAM_BOT_TOKEN")),
+        "expectedUser": env.get("TELEGRAM_EXPECTED_USER", ""),
+        "pending": pending,
+        "output": ANSI_RE.sub("", output).replace("\r", ""),
+    }
+
+
+def approve_telegram_pairing(instance, payload):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    if not isinstance(payload, dict):
+        raise ValueError("payload invalido")
+    code = str(payload.get("code", "")).strip()
+    if not TELEGRAM_PAIRING_CODE_RE.match(code):
+        raise ValueError("codigo de pareamento invalido")
+    output = docker_exec(
+        f"oces-{instance}",
+        ["openclaw", "pairing", "approve", "--channel", "telegram", "--notify", code],
+        timeout=45,
+    )
+    return {"ok": True, "instance": instance, "action": "telegram-pairing-approve", "code": code, "output": output}
+
+
 def configure_whatsapp_number(instance, payload):
     if instance not in known_instances():
         raise ValueError("unknown instance")
@@ -731,6 +825,26 @@ class AdminHandler(SimpleHTTPRequestHandler):
                 and parts[0] == "api"
                 and parts[1] == "instances"
                 and parts[3] == "channels"
+                and parts[4] == "telegram"
+                and parts[5] == "status"
+                and self.command == "GET"
+            ):
+                try:
+                    status = telegram_pairing_status(unquote(parts[2]))
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(status)
+                return
+
+            if (
+                len(parts) == 6
+                and parts[0] == "api"
+                and parts[1] == "instances"
+                and parts[3] == "channels"
                 and parts[4] == "whatsapp"
                 and parts[5] == "login-status"
                 and self.command == "GET"
@@ -861,6 +975,34 @@ class AdminHandler(SimpleHTTPRequestHandler):
                     self.write_json({"ok": False, "error": str(exc)}, status=500)
                     return
                 self.write_json(configured)
+                return
+
+            if len(parts) == 6 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "channels" and parts[4] == "telegram" and parts[5] == "config":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                    configured = configure_telegram(unquote(parts[2]), payload)
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(configured)
+                return
+
+            if len(parts) == 7 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "channels" and parts[4] == "telegram" and parts[5] == "pairing" and parts[6] == "approve":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                    approved = approve_telegram_pairing(unquote(parts[2]), payload)
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(approved)
                 return
 
         self.write_json({"ok": False, "error": "not found"}, status=404)

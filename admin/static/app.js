@@ -25,6 +25,16 @@ const saveAiModel = document.querySelector("#saveAiModel");
 const startOpenAiOAuth = document.querySelector("#startOpenAiOAuth");
 const refreshOpenAiOAuth = document.querySelector("#refreshOpenAiOAuth");
 const openAiOAuthPanel = document.querySelector("#openAiOAuthPanel");
+const telegramConfigForm = document.querySelector("#telegramConfigForm");
+const telegramInstance = document.querySelector("#telegramInstance");
+const telegramBotToken = document.querySelector("#telegramBotToken");
+const telegramExpectedUser = document.querySelector("#telegramExpectedUser");
+const telegramPairingCode = document.querySelector("#telegramPairingCode");
+const saveTelegramConfig = document.querySelector("#saveTelegramConfig");
+const refreshTelegramPairings = document.querySelector("#refreshTelegramPairings");
+const approveTelegramPairing = document.querySelector("#approveTelegramPairing");
+const validateTelegram = document.querySelector("#validateTelegram");
+const telegramPairingPanel = document.querySelector("#telegramPairingPanel");
 const whatsappConfigForm = document.querySelector("#whatsappConfigForm");
 const whatsappInstance = document.querySelector("#whatsappInstance");
 const whatsappNumber = document.querySelector("#whatsappNumber");
@@ -52,6 +62,12 @@ saveAiModel.addEventListener("click", configureAiModel);
 startOpenAiOAuth.addEventListener("click", startOAuthLogin);
 refreshOpenAiOAuth.addEventListener("click", refreshOAuthLogin);
 aiConfigForm.addEventListener("submit", (event) => event.preventDefault());
+saveTelegramConfig.addEventListener("click", saveTelegramSettings);
+refreshTelegramPairings.addEventListener("click", refreshTelegramStatus);
+approveTelegramPairing.addEventListener("click", approveTelegramCode);
+validateTelegram.addEventListener("click", validateTelegramChannel);
+telegramConfigForm.addEventListener("submit", (event) => event.preventDefault());
+telegramInstance.addEventListener("change", () => refreshTelegramStatus());
 startWhatsappLogin.addEventListener("click", startWhatsAppPairing);
 saveWhatsappNumber.addEventListener("click", saveWhatsAppNumber);
 refreshWhatsappLogin.addEventListener("click", refreshWhatsAppPairing);
@@ -235,6 +251,7 @@ function render(data) {
   cards.innerHTML = instances.map(renderCard).join("");
   rows.innerHTML = instances.map(renderRow).join("");
   fillAiInstances(instances);
+  fillTelegramInstances(instances);
   fillWhatsAppInstances(instances);
 
   document.querySelectorAll("[data-refresh-instance]").forEach((button) => {
@@ -247,6 +264,9 @@ function render(data) {
       if (button.dataset.validateChannel === "whatsapp") {
         whatsappInstance.value = button.dataset.instance;
         await refreshWhatsAppPairing();
+      } else if (button.dataset.validateChannel === "telegram") {
+        telegramInstance.value = button.dataset.instance;
+        await refreshTelegramStatus();
       } else {
         await loadStatus(button.dataset.instance);
         setNotice(`${label} validado para ${title(button.dataset.instance)}.`);
@@ -281,6 +301,16 @@ function fillWhatsAppInstances(instances) {
     .join("");
   if (instances.some((item) => item.name === selected)) {
     whatsappInstance.value = selected;
+  }
+}
+
+function fillTelegramInstances(instances) {
+  const selected = telegramInstance.value;
+  telegramInstance.innerHTML = instances
+    .map((item) => `<option value="${escapeAttribute(item.name)}">${escapeHtml(title(item.name))}</option>`)
+    .join("");
+  if (instances.some((item) => item.name === selected)) {
+    telegramInstance.value = selected;
   }
 }
 
@@ -465,6 +495,147 @@ function renderOAuthPanel(data) {
     </div>
     ${links ? `<div class="oauth-links">${links}</div>` : ""}
     <pre>${escapeHtml(log)}</pre>
+  `;
+}
+
+async function saveTelegramSettings() {
+  const instance = telegramInstance.value;
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  const botToken = telegramBotToken.value.trim();
+  const expectedUser = telegramExpectedUser.value.trim();
+  if (!botToken && !expectedUser) {
+    setNotice("Informe o token do bot ou o usuário esperado.");
+    return;
+  }
+  if (botToken && !window.confirm(`Salvar token do Telegram em ${title(instance)} e reiniciar o container?`)) return;
+
+  saveTelegramConfig.disabled = true;
+  refreshAll.disabled = true;
+  setNotice(`Atualizando Telegram em ${title(instance)}...`);
+  try {
+    await apiJsonPost(`/api/instances/${encodeURIComponent(instance)}/channels/telegram/config`, {
+      botToken,
+      expectedUser,
+    });
+    telegramBotToken.value = "";
+    setNotice(`Configuração do Telegram salva em ${title(instance)}.`);
+    window.setTimeout(() => loadStatus(instance), botToken ? 8000 : 1500);
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    saveTelegramConfig.disabled = false;
+    refreshAll.disabled = false;
+  }
+}
+
+async function refreshTelegramStatus() {
+  const instance = telegramInstance.value;
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  refreshTelegramPairings.disabled = true;
+  try {
+    const data = await api(`/api/instances/${encodeURIComponent(instance)}/channels/telegram/status`);
+    renderTelegramPanel(data);
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    refreshTelegramPairings.disabled = false;
+  }
+}
+
+async function approveTelegramCode() {
+  const instance = telegramInstance.value;
+  const code = telegramPairingCode.value.trim();
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  if (!code) {
+    setNotice("Informe o código de pareamento do Telegram.");
+    return;
+  }
+  approveTelegramPairing.disabled = true;
+  setNotice(`Aprovando código Telegram em ${title(instance)}...`);
+  try {
+    await apiJsonPost(`/api/instances/${encodeURIComponent(instance)}/channels/telegram/pairing/approve`, { code });
+    telegramPairingCode.value = "";
+    setNotice(`Código Telegram aprovado em ${title(instance)}.`);
+    await refreshTelegramStatus();
+    window.setTimeout(() => loadStatus(instance), 2500);
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    approveTelegramPairing.disabled = false;
+  }
+}
+
+async function validateTelegramChannel() {
+  const instance = telegramInstance.value;
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  await loadStatus(instance);
+  const current = state.data?.instances?.find((item) => item.name === instance);
+  const telegram = current?.channels?.telegram || {};
+  if (channelOk(current || {}, "telegram")) {
+    setNotice(`Telegram conectado em ${title(instance)}.`);
+  } else if (telegram.configured) {
+    setNotice(`Telegram configurado em ${title(instance)}, mas ainda sem usuário aprovado ou probe OK.`);
+  } else {
+    setNotice(`Telegram ainda não configurado em ${title(instance)}.`);
+  }
+}
+
+function renderTelegramPanel(data) {
+  if (data.expectedUser !== undefined) {
+    telegramExpectedUser.value = data.expectedUser || "";
+  }
+  const pending = Array.isArray(data.pending) ? data.pending : [];
+  telegramPairingPanel.classList.remove("hidden");
+  telegramPairingPanel.innerHTML = `
+    <div class="oauth-status">
+      <strong>${data.configured ? "Bot configurado" : "Bot não configurado"}</strong>
+      ${data.expectedUser ? `<span>Usuário esperado: ${escapeHtml(data.expectedUser)}</span>` : ""}
+    </div>
+    ${
+      pending.length
+        ? `<div class="pending-list">${pending.map(renderTelegramPending).join("")}</div>`
+        : '<div class="empty-state">Nenhum pareamento Telegram pendente.</div>'
+    }
+    ${data.output ? `<pre>${escapeHtml(data.output)}</pre>` : ""}
+  `;
+  telegramPairingPanel.querySelectorAll("[data-telegram-code]").forEach((button) => {
+    button.addEventListener("click", () => {
+      telegramPairingCode.value = button.dataset.telegramCode;
+      approveTelegramCode();
+    });
+  });
+}
+
+function renderTelegramPending(item) {
+  const code = item.code || item.pairingCode || item.id || item.requestId || "";
+  const user = item.userId || item.senderId || item.fromId || item.chatId || item.user || "";
+  const label = code || JSON.stringify(item);
+  return `
+    <div class="pending-item">
+      <div>
+        <strong>${escapeHtml(code || "Código pendente")}</strong>
+        <span>${escapeHtml(user || "Telegram")}</span>
+      </div>
+      <code>${escapeHtml(label)}</code>
+      <small>${escapeHtml(item.createdAt || item.ts || item.age || "")}</small>
+      ${
+        code
+          ? `<button type="button" data-telegram-code="${escapeAttribute(code)}">Aprovar</button>`
+          : ""
+      }
+    </div>
   `;
 }
 
