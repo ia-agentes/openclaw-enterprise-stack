@@ -490,12 +490,33 @@ function renderOAuthPanel(data) {
     .map((link) => `<a href="${escapeAttribute(link)}" target="_blank" rel="noreferrer">${escapeHtml(link)}</a>`)
     .join("");
   const log = data.log || "Nenhum fluxo OAuth iniciado nesta instância.";
+  const deviceCard =
+    data.deviceUrl || data.deviceCode
+      ? `
+        <div class="device-code-card">
+          <div>
+            <span>Link de autorização</span>
+            ${
+              data.deviceUrl
+                ? `<a href="${escapeAttribute(data.deviceUrl)}" target="_blank" rel="noreferrer">${escapeHtml(data.deviceUrl)}</a>`
+                : '<strong>-</strong>'
+            }
+          </div>
+          <div>
+            <span>Código</span>
+            <code>${escapeHtml(data.deviceCode || "-")}</code>
+          </div>
+          ${data.expiresText ? `<small>${escapeHtml(data.expiresText)}</small>` : ""}
+        </div>
+      `
+      : "";
   openAiOAuthPanel.classList.remove("hidden");
   openAiOAuthPanel.innerHTML = `
     <div class="oauth-status">
       <strong>${escapeHtml(status)}</strong>
       <span>${data.exitCode === null || data.exitCode === undefined ? "" : `exit ${escapeHtml(data.exitCode)}`}</span>
     </div>
+    ${deviceCard}
     ${links ? `<div class="oauth-links">${links}</div>` : ""}
     <pre>${escapeHtml(log)}</pre>
   `;

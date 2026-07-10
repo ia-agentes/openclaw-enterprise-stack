@@ -228,6 +228,53 @@ h1 {
   font-size: 13px;
 }
 
+.device-code-card {
+  display: grid;
+  grid-template-columns: minmax(240px, 1.4fr) minmax(150px, 0.7fr);
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid #fecaca;
+  border-radius: 8px;
+  background: #fff7f7;
+}
+
+.device-code-card div {
+  display: grid;
+  gap: 4px;
+}
+
+.device-code-card span,
+.device-code-card small {
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.device-code-card a {
+  color: var(--accent);
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+
+.device-code-card code {
+  display: inline-flex;
+  align-items: center;
+  min-height: 38px;
+  width: fit-content;
+  padding: 0 12px;
+  border: 1px solid #fca5a5;
+  border-radius: 8px;
+  background: #fff;
+  color: var(--text);
+  font-size: 20px;
+  font-weight: 800;
+  letter-spacing: 0;
+}
+
+.device-code-card small {
+  grid-column: 1 / -1;
+}
+
 .oauth-panel pre,
 .terminal-panel pre {
   max-height: 220px;
@@ -650,6 +697,7 @@ tr:last-child td {
   .ai-config,
   .ai-config-form,
   .oauth-panel,
+  .device-code-card,
   .creator,
   .creator-form,
   .channel-config,

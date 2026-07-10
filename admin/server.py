@@ -688,7 +688,24 @@ log = log
   .replace(/sk-[A-Za-z0-9_-]+/g, "sk-***")
   .replace(/(access_token|refresh_token)["'=:\s]+[A-Za-z0-9._-]+/gi, "$1=***");
 const links = [...new Set(log.match(/https?:\/\/[^\s)]+/g) || [])].slice(0, 6);
-console.log("__OCES_JSON__" + JSON.stringify({ running, pid: pid || null, exitCode, log, links }));
+const cleanLog = log.replace(/\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])/g, "");
+const deviceUrl = (
+  cleanLog.match(/URL:\s*(https?:\/\/\S+)/i)?.[1] ||
+  links.find((link) => /\/codex\/device\b/.test(link)) ||
+  ""
+);
+const deviceCode = cleanLog.match(/Code:\s*([A-Z0-9-]{4,})/i)?.[1] || "";
+const expiresText = cleanLog.match(/Code expires in[^\n\r.]*(?:\.)?/i)?.[0] || "";
+console.log("__OCES_JSON__" + JSON.stringify({
+  running,
+  pid: pid || null,
+  exitCode,
+  log,
+  links,
+  deviceUrl,
+  deviceCode,
+  expiresText,
+}));
 '''
     output = docker_exec(f"oces-{instance}", ["node", "-e", script], timeout=15)
     marker = "__OCES_JSON__"
