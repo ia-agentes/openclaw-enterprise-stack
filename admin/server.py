@@ -732,9 +732,9 @@ fi
 rm -f "$dir/log" "$dir/exit" "$dir/pid"
 (
   if command -v script >/dev/null 2>&1; then
-    script -q -e -c "openclaw channels login --channel whatsapp --verbose" /dev/null
+    TERM=xterm-256color COLUMNS=160 LINES=80 script -q -e -c "stty cols 160 rows 80 2>/dev/null || true; openclaw channels login --channel whatsapp --verbose" /dev/null
   else
-    openclaw channels login --channel whatsapp --verbose
+    TERM=xterm-256color COLUMNS=160 LINES=80 openclaw channels login --channel whatsapp --verbose
   fi
   code=$?
   echo "$code" > "$dir/exit"
