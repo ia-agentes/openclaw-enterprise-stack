@@ -8,6 +8,7 @@ const state = {
 const tokenInput = document.querySelector("#tokenInput");
 const saveToken = document.querySelector("#saveToken");
 const refreshAll = document.querySelector("#refreshAll");
+const tokenStatus = document.querySelector("#tokenStatus");
 const cards = document.querySelector("#cards");
 const rows = document.querySelector("#rows");
 const notice = document.querySelector("#notice");
@@ -50,13 +51,13 @@ const pendingAccessList = document.querySelector("#pendingAccessList");
 
 tokenInput.value = state.token;
 
-saveToken.addEventListener("click", () => {
+saveToken.addEventListener("click", async () => {
   state.token = tokenInput.value.trim();
   localStorage.setItem("ocesAdminToken", state.token);
-  loadStatus();
+  await loadStatus(null, { source: "token" });
 });
 
-refreshAll.addEventListener("click", () => loadStatus());
+refreshAll.addEventListener("click", () => loadStatus(null, { source: "refresh" }));
 refreshPending.addEventListener("click", () => loadPendingAccess());
 createInstanceForm.addEventListener("submit", createInstance);
 saveOpenAiKey.addEventListener("click", configureOpenAiKey);
@@ -121,9 +122,20 @@ async function apiJsonPost(path, payload) {
   return response.json();
 }
 
-async function loadStatus(instance = null) {
+async function loadStatus(instance = null, options = {}) {
   setNotice("");
   state.loading = true;
+  const source = options.source || (instance ? "instance" : "auto");
+  const previousSaveLabel = saveToken.textContent;
+  const previousRefreshLabel = refreshAll.textContent;
+  if (source === "token") {
+    setTokenStatus("loading", "Validando token...");
+    saveToken.textContent = "Salvando...";
+    saveToken.disabled = true;
+  } else if (source === "refresh") {
+    setTokenStatus("loading", "Atualizando instâncias...");
+    refreshAll.textContent = "Atualizando...";
+  }
   refreshAll.disabled = true;
   try {
     const url = instance ? `/api/status?instance=${encodeURIComponent(instance)}` : "/api/status";
@@ -140,10 +152,20 @@ async function loadStatus(instance = null) {
     render(state.data);
     fillCreateDefaults();
     loadPendingAccess();
+    if (!instance) {
+      const count = state.data?.instances?.length || 0;
+      setTokenStatus("ok", `Conectado - ${count} instâncias carregadas`);
+      if (source === "token") setNotice("Token salvo e conexão validada.");
+    }
   } catch (error) {
-    setNotice(readableError(error));
+    const message = readableError(error);
+    if (!instance) setTokenStatus("bad", message);
+    setNotice(message);
   } finally {
     state.loading = false;
+    saveToken.disabled = false;
+    saveToken.textContent = previousSaveLabel;
+    refreshAll.textContent = previousRefreshLabel;
     refreshAll.disabled = false;
   }
 }
@@ -906,6 +928,11 @@ function title(value) {
 function setNotice(message) {
   notice.textContent = message;
   notice.classList.toggle("hidden", !message);
+}
+
+function setTokenStatus(kind, message) {
+  tokenStatus.textContent = message;
+  tokenStatus.className = `connection-status ${kind}`;
 }
 
 function readableError(error) {

@@ -53,6 +53,54 @@ button.primary,
   color: #fff;
 }
 
+.connection-status {
+  min-height: 30px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.connection-status::before {
+  content: "";
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--idle);
+}
+
+.connection-status.loading::before {
+  background: var(--warn);
+  box-shadow: 0 0 0 4px rgba(161, 92, 0, 0.14);
+}
+
+.connection-status.ok {
+  color: var(--ok);
+  border-color: #a7e0c3;
+  background: #f0fdf6;
+}
+
+.connection-status.ok::before {
+  background: var(--ok);
+}
+
+.connection-status.bad {
+  color: var(--bad);
+  border-color: #f6b6b0;
+  background: #fff5f5;
+}
+
+.connection-status.bad::before {
+  background: var(--bad);
+}
+
 button.danger {
   border-color: #f6b6b0;
   background: var(--accent-soft);
@@ -81,6 +129,14 @@ select {
   justify-content: space-between;
   gap: 18px;
   margin-bottom: 18px;
+}
+
+.actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
 .eyebrow {
