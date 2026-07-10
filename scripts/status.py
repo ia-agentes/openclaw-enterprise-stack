@@ -270,7 +270,11 @@ def openclaw_models(container):
             data["configured"] = value_after_colon(line)
         elif line.startswith("- openai effective="):
             data["openai"]["effective"] = sanitize_model_auth_line(line)
-            data["openai"]["apiKey"] = "api_key=" in line and "api_key=0" not in line
+            data["openai"]["apiKey"] = (
+                ("api_key=" in line and "api_key=0" not in line)
+                or "source=env: OPENAI_API_KEY" in line
+                or "env=sk-" in line
+            )
             data["openai"]["oauth"] = "oauth=" in line and "oauth=0" not in line
             data["openai"]["token"] = "token=" in line and "token=0" not in line
     return data
