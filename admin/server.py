@@ -1,7 +1,9 @@
 #!/usr/bin/env python3
 import json
 import os
+import hmac
 import http.client
+import posixpath
 import re
 import shutil
 import socket
@@ -859,9 +861,14 @@ class AdminHandler(SimpleHTTPRequestHandler):
 
     def translate_path(self, path):
         parsed = urlparse(path)
-        if parsed.path == "/":
+        clean_path = posixpath.normpath(unquote(parsed.path))
+        if clean_path in ("", "."):
+            clean_path = "/"
+        if clean_path == "/":
             return str(STATIC_ROOT / "index.html")
-        return str(STATIC_ROOT / parsed.path.lstrip("/"))
+        if clean_path.startswith("../") or clean_path == "..":
+            return str(STATIC_ROOT / "__not_found__")
+        return str(STATIC_ROOT / clean_path.lstrip("/"))
 
     def do_GET(self):
         parsed = urlparse(self.path)
@@ -1176,9 +1183,10 @@ class AdminHandler(SimpleHTTPRequestHandler):
     def authorized(self):
         token = os.environ.get("OCES_ADMIN_TOKEN", "")
         if not token:
-            return True
+            return False
         header = self.headers.get("Authorization", "")
-        return header == f"Bearer {token}"
+        expected = f"Bearer {token}"
+        return hmac.compare_digest(header, expected)
 
     def request_auth(self):
         self.write_json(
@@ -1197,6 +1205,14 @@ class AdminHandler(SimpleHTTPRequestHandler):
             self.send_header(key, value)
         self.end_headers()
         self.wfile.write(body)
+
+    def end_headers(self):
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Referrer-Policy", "no-referrer")
+        self.send_header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        self.send_header("Content-Security-Policy", "default-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; script-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'")
+        super().end_headers()
 
     def log_message(self, fmt, *args):
         print("%s - %s" % (self.address_string(), fmt % args), flush=True)
