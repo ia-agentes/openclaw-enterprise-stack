@@ -40,6 +40,9 @@ TELEGRAM_BOT_TOKEN_RE = re.compile(r"^[0-9]{6,}:[A-Za-z0-9_-]{20,}$")
 TELEGRAM_PAIRING_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{4,32}$")
 WHATSAPP_PAIRING_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{4,32}$")
 PHONE_RE = re.compile(r"^\+?[0-9]{10,15}$")
+TELEGRAM_USER_ID_RE = re.compile(r"^(?:telegram:|tg:)?[0-9]{4,20}$", re.IGNORECASE)
+TELEGRAM_GROUP_ID_RE = re.compile(r"^-?[0-9]{5,30}$")
+WHATSAPP_GROUP_ID_RE = re.compile(r"^[A-Za-z0-9._:+-]{5,120}@g\.us$")
 ANSI_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 OPENAI_MODELS = {
     "openai/gpt-5.5",
@@ -234,6 +237,210 @@ def write_env_value(path, key, value):
     if not updated:
         next_lines.append(f"{key}={value}")
     path.write_text("\n".join(next_lines).rstrip() + "\n", encoding="utf-8", newline="\n")
+
+
+def instance_state_dir(instance):
+    return ROOT / "instances" / instance / "data" / ".openclaw"
+
+
+def instance_config_path(instance):
+    return instance_state_dir(instance) / "openclaw.json"
+
+
+def instance_access_meta_path(instance):
+    return instance_state_dir(instance) / "oces-access.json"
+
+
+def read_json_file(path, default):
+    if not path.exists():
+        return default
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return default
+    return data if data is not None else default
+
+
+def write_json_file(path, data):
+    path.parent.mkdir(parents=True, exist_ok=True)
+    if path.exists():
+        backup = path.with_suffix(path.suffix + ".oces-bak")
+        try:
+            backup.write_text(path.read_text(encoding="utf-8"), encoding="utf-8", newline="\n")
+        except Exception:
+            pass
+    path.write_text(
+        json.dumps(data, ensure_ascii=False, indent=2).rstrip() + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
+
+
+def normalize_access_identity(channel, kind, identity):
+    channel = str(channel or "").strip().lower()
+    kind = str(kind or "").strip().lower()
+    value = str(identity or "").strip()
+    if channel not in ("telegram", "whatsapp"):
+        raise ValueError("canal precisa ser telegram ou whatsapp")
+    if kind not in ("contact", "group"):
+        raise ValueError("tipo precisa ser contato ou grupo")
+    if channel == "telegram" and kind == "contact":
+        value = re.sub(r"^(telegram|tg):", "", value, flags=re.IGNORECASE)
+        if not TELEGRAM_USER_ID_RE.match(value):
+            raise ValueError("contato Telegram precisa ser o ID numerico do usuario")
+        return value
+    if channel == "telegram" and kind == "group":
+        if not TELEGRAM_GROUP_ID_RE.match(value):
+            raise ValueError("grupo Telegram precisa ser o chat id numerico, exemplo -1001234567890")
+        return value
+    if channel == "whatsapp" and kind == "contact":
+        value = value.replace(" ", "").replace("-", "").replace("(", "").replace(")", "")
+        if not PHONE_RE.match(value):
+            raise ValueError("contato WhatsApp precisa estar em formato internacional, exemplo +5541999578125")
+        return value
+    if not WHATSAPP_GROUP_ID_RE.match(value):
+        raise ValueError("grupo WhatsApp precisa ser o id do grupo terminado em @g.us")
+    return value
+
+
+def owner_identity(channel, identity):
+    return f"{channel}:{identity}"
+
+
+def unique_list(values):
+    seen = set()
+    result = []
+    for value in values or []:
+        item = str(value).strip()
+        if not item or item in seen:
+            continue
+        seen.add(item)
+        result.append(item)
+    return result
+
+
+def read_access_meta(instance):
+    data = read_json_file(instance_access_meta_path(instance), {"items": []})
+    if not isinstance(data, dict):
+        return {"items": []}
+    if not isinstance(data.get("items"), list):
+        data["items"] = []
+    return data
+
+
+def write_access_meta(instance, items):
+    write_json_file(
+        instance_access_meta_path(instance),
+        {"items": sorted(items, key=lambda item: (item["channel"], item["kind"], item["id"]))},
+    )
+
+
+def access_meta_index(meta):
+    indexed = {}
+    for item in meta.get("items", []):
+        if not isinstance(item, dict):
+            continue
+        key = (str(item.get("channel", "")), str(item.get("kind", "")), str(item.get("id", "")))
+        if all(key):
+            indexed[key] = item
+    return indexed
+
+
+def append_access_item(items, item):
+    key = (item["channel"], item["kind"], item["id"])
+    next_items = [
+        existing
+        for existing in items
+        if (existing.get("channel"), existing.get("kind"), existing.get("id")) != key
+    ]
+    next_items.append(item)
+    return next_items
+
+
+def remove_access_item(items, channel, kind, identity):
+    return [
+        existing
+        for existing in items
+        if existing.get("channel") != channel or existing.get("kind") != kind or existing.get("id") != identity
+    ]
+
+
+def ensure_channel_config(config, channel):
+    channels = config.setdefault("channels", {})
+    if not isinstance(channels, dict):
+        config["channels"] = {}
+        channels = config["channels"]
+    cfg = channels.setdefault(channel, {})
+    if not isinstance(cfg, dict):
+        channels[channel] = {}
+        cfg = channels[channel]
+    return cfg
+
+
+def set_group_config(channel_cfg, group_id):
+    groups = channel_cfg.setdefault("groups", {})
+    if not isinstance(groups, dict):
+        channel_cfg["groups"] = {}
+        groups = channel_cfg["groups"]
+    current = groups.get(group_id)
+    if not isinstance(current, dict):
+        current = {}
+    current.setdefault("requireMention", False)
+    groups[group_id] = current
+
+
+def remove_group_config(channel_cfg, group_id):
+    groups = channel_cfg.get("groups")
+    if isinstance(groups, dict):
+        groups.pop(group_id, None)
+        if not groups:
+            channel_cfg.pop("groups", None)
+
+
+def set_access_in_config(config, channel, kind, identity, access):
+    channel_cfg = ensure_channel_config(config, channel)
+    if kind == "contact":
+        channel_cfg["dmPolicy"] = "allowlist"
+        channel_cfg["allowFrom"] = unique_list([*(channel_cfg.get("allowFrom") or []), identity])
+    else:
+        channel_cfg["groupPolicy"] = "allowlist"
+        set_group_config(channel_cfg, identity)
+
+    commands = config.setdefault("commands", {})
+    if not isinstance(commands, dict):
+        config["commands"] = {}
+        commands = config["commands"]
+    owners = unique_list(commands.get("ownerAllowFrom") or [])
+    scoped_owner = owner_identity(channel, identity)
+    if access == "admin" and kind == "contact":
+        owners = unique_list([*owners, scoped_owner])
+    else:
+        owners = [item for item in owners if item != scoped_owner]
+    if owners:
+        commands["ownerAllowFrom"] = owners
+    else:
+        commands.pop("ownerAllowFrom", None)
+
+
+def remove_access_from_config(config, channel, kind, identity):
+    channel_cfg = ensure_channel_config(config, channel)
+    if kind == "contact":
+        channel_cfg["allowFrom"] = [
+            item for item in unique_list(channel_cfg.get("allowFrom") or []) if item != identity
+        ]
+        if not channel_cfg["allowFrom"]:
+            channel_cfg.pop("allowFrom", None)
+    else:
+        remove_group_config(channel_cfg, identity)
+
+    commands = config.get("commands")
+    if isinstance(commands, dict):
+        scoped_owner = owner_identity(channel, identity)
+        commands["ownerAllowFrom"] = [
+            item for item in unique_list(commands.get("ownerAllowFrom") or []) if item != scoped_owner
+        ]
+        if not commands["ownerAllowFrom"]:
+            commands.pop("ownerAllowFrom", None)
 
 
 def validate_instance_payload(payload):
@@ -825,6 +1032,144 @@ def approve_whatsapp_pairing(instance, payload):
     return {"ok": True, "instance": instance, "action": "whatsapp-pairing-approve", "code": code, "output": output}
 
 
+def config_access_entries(config, meta):
+    indexed = access_meta_index(meta)
+    entries = []
+    entry_keys = set()
+    commands = config.get("commands") if isinstance(config.get("commands"), dict) else {}
+    owners = set(unique_list(commands.get("ownerAllowFrom") or []))
+    channels = config.get("channels") if isinstance(config.get("channels"), dict) else {}
+
+    for channel in ("telegram", "whatsapp"):
+        channel_cfg = channels.get(channel) if isinstance(channels.get(channel), dict) else {}
+        for identity in unique_list(channel_cfg.get("allowFrom") or []):
+            key = (channel, "contact", identity)
+            saved = indexed.get(key, {})
+            access = "admin" if owner_identity(channel, identity) in owners else saved.get("access", "chat")
+            entries.append(
+                {
+                    "channel": channel,
+                    "kind": "contact",
+                    "id": identity,
+                    "label": saved.get("label", ""),
+                    "access": access if access in ("chat", "admin") else "chat",
+                    "source": saved.get("source", "config"),
+                }
+            )
+            entry_keys.add(key)
+        groups = channel_cfg.get("groups")
+        if isinstance(groups, dict):
+            for identity in sorted(groups.keys()):
+                key = (channel, "group", identity)
+                saved = indexed.get(key, {})
+                entries.append(
+                    {
+                        "channel": channel,
+                        "kind": "group",
+                        "id": identity,
+                        "label": saved.get("label", ""),
+                        "access": "chat",
+                        "source": saved.get("source", "config"),
+                    }
+                )
+                entry_keys.add(key)
+    for owner in sorted(owners):
+        if ":" not in owner:
+            continue
+        channel, identity = owner.split(":", 1)
+        if channel not in ("telegram", "whatsapp") or not identity:
+            continue
+        key = (channel, "contact", identity)
+        if key in entry_keys:
+            continue
+        saved = indexed.get(key, {})
+        entries.append(
+            {
+                "channel": channel,
+                "kind": "contact",
+                "id": identity,
+                "label": saved.get("label", ""),
+                "access": "admin",
+                "source": saved.get("source", "owner"),
+            }
+        )
+    return sorted(entries, key=lambda item: (item["channel"], item["kind"], item["label"] or item["id"]))
+
+
+def list_channel_access(instance):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    config = read_json_file(instance_config_path(instance), {})
+    if not isinstance(config, dict):
+        config = {}
+    meta = read_access_meta(instance)
+    return {"ok": True, "instance": instance, "items": config_access_entries(config, meta)}
+
+
+def save_channel_access(instance, payload):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    if not isinstance(payload, dict):
+        raise ValueError("payload invalido")
+    channel = str(payload.get("channel", "")).strip().lower()
+    kind = str(payload.get("kind", "")).strip().lower()
+    identity = normalize_access_identity(channel, kind, payload.get("id", ""))
+    access = str(payload.get("access", "chat")).strip().lower()
+    if access not in ("chat", "admin"):
+        raise ValueError("acesso precisa ser conversa ou admin")
+    if kind == "group" and access == "admin":
+        raise ValueError("acesso admin e permitido apenas para contatos; grupos ficam como conversa")
+    label = str(payload.get("label", "")).strip()[:80]
+
+    with CREATE_LOCK:
+        config_path = instance_config_path(instance)
+        config = read_json_file(config_path, {})
+        if not isinstance(config, dict):
+            config = {}
+        set_access_in_config(config, channel, kind, identity, access)
+        write_json_file(config_path, config)
+
+        meta = read_access_meta(instance)
+        item = {
+            "channel": channel,
+            "kind": kind,
+            "id": identity,
+            "label": label,
+            "access": access,
+            "source": "dashboard",
+            "updatedAt": update_timestamp(),
+        }
+        write_access_meta(instance, append_access_item(meta.get("items", []), item))
+        chown_instance_data(instance)
+        docker_request("POST", f"/containers/oces-{instance}/restart?t=10", timeout=45)
+
+    return {"ok": True, "instance": instance, "item": item, "items": list_channel_access(instance)["items"]}
+
+
+def delete_channel_access(instance, payload):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    if not isinstance(payload, dict):
+        raise ValueError("payload invalido")
+    channel = str(payload.get("channel", "")).strip().lower()
+    kind = str(payload.get("kind", "")).strip().lower()
+    identity = normalize_access_identity(channel, kind, payload.get("id", ""))
+
+    with CREATE_LOCK:
+        config_path = instance_config_path(instance)
+        config = read_json_file(config_path, {})
+        if not isinstance(config, dict):
+            config = {}
+        remove_access_from_config(config, channel, kind, identity)
+        write_json_file(config_path, config)
+        meta = read_access_meta(instance)
+        write_access_meta(instance, remove_access_item(meta.get("items", []), channel, kind, identity))
+        chown_instance_data(instance)
+        docker_request("POST", f"/containers/oces-{instance}/restart?t=10", timeout=45)
+
+    return {"ok": True, "instance": instance, "items": list_channel_access(instance)["items"]}
+
+
 def start_openai_oauth(instance):
     if instance not in known_instances():
         raise ValueError("unknown instance")
@@ -1148,6 +1493,24 @@ class AdminHandler(SimpleHTTPRequestHandler):
         if parsed.path.startswith("/api/instances/"):
             parts = [part for part in parsed.path.split("/") if part]
             if (
+                len(parts) == 4
+                and parts[0] == "api"
+                and parts[1] == "instances"
+                and parts[3] == "access"
+                and self.command == "GET"
+            ):
+                try:
+                    access = list_channel_access(unquote(parts[2]))
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(access)
+                return
+
+            if (
                 len(parts) == 6
                 and parts[0] == "api"
                 and parts[1] == "instances"
@@ -1309,6 +1672,34 @@ class AdminHandler(SimpleHTTPRequestHandler):
                     self.write_json({"ok": False, "error": str(exc)}, status=500)
                     return
                 self.write_json(configured)
+                return
+
+            if len(parts) == 4 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "access":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                    saved = save_channel_access(unquote(parts[2]), payload)
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(saved)
+                return
+
+            if len(parts) == 5 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "access" and parts[4] == "remove":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                    removed = delete_channel_access(unquote(parts[2]), payload)
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(removed)
                 return
 
             if len(parts) == 6 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "channels" and parts[4] == "whatsapp" and parts[5] == "number":

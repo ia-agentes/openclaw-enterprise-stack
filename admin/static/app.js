@@ -51,6 +51,15 @@ const pendingAccessList = document.querySelector("#pendingAccessList");
 const startOpenClawUpdate = document.querySelector("#startOpenClawUpdate");
 const refreshOpenClawUpdate = document.querySelector("#refreshOpenClawUpdate");
 const openClawUpdatePanel = document.querySelector("#openClawUpdatePanel");
+const accessConfigForm = document.querySelector("#accessConfigForm");
+const accessInstance = document.querySelector("#accessInstance");
+const accessChannel = document.querySelector("#accessChannel");
+const accessKind = document.querySelector("#accessKind");
+const accessId = document.querySelector("#accessId");
+const accessLabel = document.querySelector("#accessLabel");
+const accessLevel = document.querySelector("#accessLevel");
+const refreshChannelAccess = document.querySelector("#refreshChannelAccess");
+const channelAccessPanel = document.querySelector("#channelAccessPanel");
 
 let openClawUpdateTimer = null;
 
@@ -85,6 +94,11 @@ approveWhatsappPairing.addEventListener("click", approveWhatsAppCode);
 validateWhatsapp.addEventListener("click", validateWhatsApp);
 whatsappConfigForm.addEventListener("submit", (event) => event.preventDefault());
 whatsappInstance.addEventListener("change", () => refreshWhatsAppPairing());
+accessConfigForm.addEventListener("submit", saveChannelAccess);
+refreshChannelAccess.addEventListener("click", () => loadChannelAccess());
+accessInstance.addEventListener("change", () => loadChannelAccess());
+accessChannel.addEventListener("change", syncAccessForm);
+accessKind.addEventListener("change", syncAccessForm);
 newName.addEventListener("input", () => {
   if (!newDomain.value.trim()) {
     newDomain.value = suggestedDomain(newName.value.trim(), state.data?.instances || []);
@@ -285,6 +299,10 @@ function render(data) {
   fillAiInstances(instances);
   fillTelegramInstances(instances);
   fillWhatsAppInstances(instances);
+  fillAccessInstances(instances);
+  if (accessInstance.value) {
+    loadChannelAccess();
+  }
 
   document.querySelectorAll("[data-refresh-instance]").forEach((button) => {
     button.addEventListener("click", () => loadStatus(button.dataset.refreshInstance));
@@ -344,6 +362,17 @@ function fillTelegramInstances(instances) {
   if (instances.some((item) => item.name === selected)) {
     telegramInstance.value = selected;
   }
+}
+
+function fillAccessInstances(instances) {
+  const selected = accessInstance.value;
+  accessInstance.innerHTML = instances
+    .map((item) => `<option value="${escapeAttribute(item.name)}">${escapeHtml(title(item.name))}</option>`)
+    .join("");
+  if (instances.some((item) => item.name === selected)) {
+    accessInstance.value = selected;
+  }
+  syncAccessForm();
 }
 
 function renderCard(item) {
@@ -919,6 +948,178 @@ function renderWhatsAppPending(item) {
       }
     </div>
   `;
+}
+
+function syncAccessForm() {
+  const channel = accessChannel.value;
+  const kind = accessKind.value;
+  if (channel === "whatsapp" && kind === "contact") {
+    accessId.placeholder = "+5541999578125";
+  } else if (channel === "whatsapp") {
+    accessId.placeholder = "120363000000000000@g.us";
+  } else if (kind === "contact") {
+    accessId.placeholder = "8831446238";
+  } else {
+    accessId.placeholder = "-1001234567890";
+  }
+  if (kind === "group" && accessLevel.value === "admin") {
+    accessLevel.value = "chat";
+  }
+  Array.from(accessLevel.options).forEach((option) => {
+    option.disabled = kind === "group" && option.value === "admin";
+  });
+}
+
+async function loadChannelAccess() {
+  const instance = accessInstance.value;
+  if (!instance) {
+    channelAccessPanel.innerHTML = '<div class="empty-state">Selecione uma instância.</div>';
+    return;
+  }
+  refreshChannelAccess.disabled = true;
+  try {
+    const data = await api(`/api/instances/${encodeURIComponent(instance)}/access`);
+    renderChannelAccess(data.items || []);
+  } catch (error) {
+    channelAccessPanel.innerHTML = `<div class="empty-state">${escapeHtml(readableError(error))}</div>`;
+  } finally {
+    refreshChannelAccess.disabled = false;
+  }
+}
+
+async function saveChannelAccess(event) {
+  event.preventDefault();
+  const instance = accessInstance.value;
+  const payload = {
+    channel: accessChannel.value,
+    kind: accessKind.value,
+    id: accessId.value.trim(),
+    label: accessLabel.value.trim(),
+    access: accessLevel.value,
+  };
+  if (!instance || !payload.id) {
+    setNotice("Selecione uma instância e informe o identificador do acesso.");
+    return;
+  }
+  if (payload.kind === "group" && payload.access === "admin") {
+    setNotice("Acesso admin é permitido apenas para contatos. Grupos ficam como conversa.");
+    return;
+  }
+  const label = payload.label || payload.id;
+  if (!window.confirm(`Salvar acesso ${accessText(payload.access)} para ${label} em ${title(instance)}?`)) return;
+
+  const button = document.querySelector("#saveChannelAccess");
+  button.disabled = true;
+  setNotice(`Salvando acesso em ${title(instance)}...`);
+  try {
+    const data = await apiJsonPost(`/api/instances/${encodeURIComponent(instance)}/access`, payload);
+    accessId.value = "";
+    accessLabel.value = "";
+    renderChannelAccess(data.items || []);
+    setNotice(`Acesso salvo em ${title(instance)}. A instância foi reiniciada para aplicar a política.`);
+    window.setTimeout(() => loadStatus(instance), 5000);
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    button.disabled = false;
+  }
+}
+
+function renderChannelAccess(items) {
+  if (!items.length) {
+    channelAccessPanel.innerHTML = '<div class="empty-state">Nenhum contato ou grupo liberado nesta instância.</div>';
+    return;
+  }
+  channelAccessPanel.innerHTML = `
+    <div class="access-table">
+      <table>
+        <thead>
+          <tr>
+            <th>Canal</th>
+            <th>Tipo</th>
+            <th>Nome</th>
+            <th>Identificador</th>
+            <th>Acesso</th>
+            <th>Origem</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(renderChannelAccessRow).join("")}
+        </tbody>
+      </table>
+    </div>
+  `;
+  channelAccessPanel.querySelectorAll("[data-remove-access]").forEach((button) => {
+    button.addEventListener("click", () =>
+      removeChannelAccess({
+        channel: button.dataset.channel,
+        kind: button.dataset.kind,
+        id: button.dataset.id,
+        label: button.dataset.label,
+      }),
+    );
+  });
+}
+
+function renderChannelAccessRow(item) {
+  return `
+    <tr>
+      <td>${escapeHtml(channelText(item.channel))}</td>
+      <td>${escapeHtml(kindText(item.kind))}</td>
+      <td>${escapeHtml(item.label || "-")}</td>
+      <td><code>${escapeHtml(item.id)}</code></td>
+      <td>${pill(item.access === "admin" ? "warn" : "ok", accessText(item.access))}</td>
+      <td>${escapeHtml(sourceText(item.source))}</td>
+      <td>
+        <button
+          type="button"
+          class="danger"
+          data-remove-access="true"
+          data-channel="${escapeAttribute(item.channel)}"
+          data-kind="${escapeAttribute(item.kind)}"
+          data-id="${escapeAttribute(item.id)}"
+          data-label="${escapeAttribute(item.label || item.id)}"
+        >Remover</button>
+      </td>
+    </tr>
+  `;
+}
+
+async function removeChannelAccess(item) {
+  const instance = accessInstance.value;
+  if (!instance) return;
+  if (!window.confirm(`Remover acesso de ${item.label || item.id} em ${title(instance)}?`)) return;
+  setNotice(`Removendo acesso em ${title(instance)}...`);
+  try {
+    const data = await apiJsonPost(`/api/instances/${encodeURIComponent(instance)}/access/remove`, {
+      channel: item.channel,
+      kind: item.kind,
+      id: item.id,
+    });
+    renderChannelAccess(data.items || []);
+    setNotice(`Acesso removido em ${title(instance)}. A instância foi reiniciada para aplicar a política.`);
+    window.setTimeout(() => loadStatus(instance), 5000);
+  } catch (error) {
+    setNotice(readableError(error));
+  }
+}
+
+function channelText(value) {
+  return value === "telegram" ? "Telegram" : "WhatsApp";
+}
+
+function kindText(value) {
+  return value === "group" ? "Grupo" : "Contato";
+}
+
+function accessText(value) {
+  return value === "admin" ? "Admin" : "Conversa";
+}
+
+function sourceText(value) {
+  if (value === "owner") return "Admin nativo";
+  return value === "dashboard" ? "Painel" : "Configuração";
 }
 
 function metric(label, value) {

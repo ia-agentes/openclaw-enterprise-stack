@@ -193,6 +193,7 @@ h1 {
 .ops-panel,
 .creator,
 .channel-config,
+.access-config,
 .pending-access,
 .card,
 .table-wrap,
@@ -426,6 +427,75 @@ h1 {
   gap: 14px;
   padding: 14px;
   margin-bottom: 16px;
+}
+
+.access-config {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.7fr) minmax(0, 2fr);
+  align-items: start;
+  gap: 14px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.access-config h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+}
+
+.access-config p {
+  margin: 0;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.access-config-form {
+  display: grid;
+  grid-template-columns:
+    minmax(120px, 0.7fr)
+    minmax(120px, 0.7fr)
+    minmax(110px, 0.6fr)
+    minmax(190px, 1.1fr)
+    minmax(160px, 0.9fr)
+    minmax(120px, 0.7fr)
+    repeat(2, auto);
+  gap: 10px;
+  align-items: end;
+}
+
+.access-config-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.access-config-form input,
+.access-config-form select {
+  width: 100%;
+  min-width: 0;
+}
+
+.access-config-form button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+}
+
+.access-panel {
+  grid-column: 2;
+  min-width: 0;
+}
+
+.access-table {
+  overflow-x: auto;
+}
+
+.access-table table {
+  min-width: 920px;
+  background: #fff;
 }
 
 .channel-config h2 {
@@ -834,6 +904,9 @@ tr:last-child td {
   .creator-form,
   .channel-config,
   .channel-config-form,
+  .access-config,
+  .access-config-form,
+  .access-panel,
   .terminal-panel,
   .telegram-config-form,
   .whatsapp-config-form,

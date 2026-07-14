@@ -172,6 +172,51 @@
         <div id="whatsappLoginPanel" class="terminal-panel hidden"></div>
       </section>
 
+      <section class="access-config" aria-label="Acessos de canais">
+        <div>
+          <h2>Acessos por instância</h2>
+          <p>Gerencia contatos e grupos autorizados nos canais e define quem tem permissões administrativas.</p>
+        </div>
+        <form id="accessConfigForm" class="access-config-form">
+          <label>
+            Instância
+            <select id="accessInstance" name="instance"></select>
+          </label>
+          <label>
+            Canal
+            <select id="accessChannel" name="channel">
+              <option value="whatsapp">WhatsApp</option>
+              <option value="telegram">Telegram</option>
+            </select>
+          </label>
+          <label>
+            Tipo
+            <select id="accessKind" name="kind">
+              <option value="contact">Contato</option>
+              <option value="group">Grupo</option>
+            </select>
+          </label>
+          <label>
+            Identificador
+            <input id="accessId" name="id" type="text" autocomplete="off" placeholder="+5541999578125" />
+          </label>
+          <label>
+            Nome
+            <input id="accessLabel" name="label" type="text" autocomplete="off" placeholder="Felipe" />
+          </label>
+          <label>
+            Acesso
+            <select id="accessLevel" name="access">
+              <option value="chat">Conversa</option>
+              <option value="admin">Admin</option>
+            </select>
+          </label>
+          <button id="saveChannelAccess" type="submit">Salvar acesso</button>
+          <button id="refreshChannelAccess" type="button">Atualizar lista</button>
+        </form>
+        <div id="channelAccessPanel" class="access-panel"></div>
+      </section>
+
       <section class="pending-access" aria-label="Acessos pendentes">
         <div class="section-head">
           <div>
