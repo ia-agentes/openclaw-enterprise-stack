@@ -190,6 +190,7 @@ h1 {
 
 .summary > div,
 .ai-config,
+.ops-panel,
 .creator,
 .channel-config,
 .pending-access,
@@ -227,7 +228,7 @@ h1 {
 }
 
 .hidden {
-  display: none;
+  display: none !important;
 }
 
 .ai-config {
@@ -237,6 +238,50 @@ h1 {
   gap: 14px;
   padding: 14px;
   margin-bottom: 16px;
+}
+
+.ops-panel {
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.ops-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+#startOpenClawUpdate {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+}
+
+#startOpenClawUpdate:hover {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+
+.update-panel {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.update-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.update-meta strong {
+  color: var(--bad);
 }
 
 .ai-config h2 {
@@ -358,7 +403,8 @@ h1 {
 }
 
 .oauth-panel pre,
-.terminal-panel pre {
+.terminal-panel pre,
+.update-panel pre {
   max-height: 220px;
   overflow: auto;
   margin: 0;
@@ -779,6 +825,7 @@ tr:last-child td {
 
   .summary,
   .cards,
+  .ops-actions,
   .ai-config,
   .ai-config-form,
   .oauth-panel,
@@ -793,6 +840,14 @@ tr:last-child td {
   .pairing-panel,
   .pending-item {
     grid-template-columns: 1fr;
+  }
+
+  .ops-actions {
+    justify-content: stretch;
+  }
+
+  .ops-actions > * {
+    flex: 1 1 160px;
   }
 
   .section-head {

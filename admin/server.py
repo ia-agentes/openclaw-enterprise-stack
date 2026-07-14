@@ -9,6 +9,7 @@ import shutil
 import socket
 import subprocess
 import threading
+import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -21,6 +22,16 @@ HOST_ROOT = Path(os.environ.get("OCES_HOST_ROOT", str(ROOT)))
 STATIC_ROOT = Path(__file__).resolve().parent / "static"
 DOCKER_SOCKET = "/var/run/docker.sock"
 CREATE_LOCK = threading.Lock()
+UPDATE_LOCK = threading.Lock()
+UPDATE_JOB = {
+    "running": False,
+    "ok": None,
+    "error": None,
+    "log": "",
+    "startedAt": None,
+    "finishedAt": None,
+    "sourceRef": None,
+}
 INSTANCE_NAME_RE = re.compile(r"^[a-z0-9][a-z0-9-]{1,31}$")
 DOMAIN_RE = re.compile(r"^(?=.{4,253}$)([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,}$")
 REQUEST_ID_RE = re.compile(r"^[a-f0-9-]{32,40}$", re.IGNORECASE)
@@ -273,6 +284,42 @@ def wait_container(container_id, timeout=45):
     return docker_json("POST", f"/containers/{container_id}/wait", timeout=timeout)
 
 
+def docker_pull_image(image, tag="latest", timeout=900):
+    docker_request("POST", f"/images/create?fromImage={image}&tag={tag}", timeout=timeout)
+
+
+def run_helper_container(image, cmd, binds=None, workdir=None, timeout=900, user=None):
+    payload = {
+        "Image": image,
+        "Cmd": cmd,
+        "WorkingDir": workdir or "/",
+        "User": user or "",
+        "HostConfig": {
+            "AutoRemove": False,
+            "Binds": binds or [],
+        },
+    }
+    created = docker_json("POST", "/containers/create", payload=payload, timeout=30)
+    container_id = created["Id"]
+    try:
+        docker_request("POST", f"/containers/{container_id}/start", timeout=30)
+        result = wait_container(container_id, timeout=timeout)
+        _, logs_raw = docker_request_bytes(
+            "GET",
+            f"/containers/{container_id}/logs?stdout=true&stderr=true",
+            timeout=60,
+        )
+        output = docker_demux(logs_raw).strip()
+        if result.get("StatusCode") != 0:
+            raise RuntimeError(output or f"helper container failed: {image}")
+        return output
+    finally:
+        try:
+            docker_request("DELETE", f"/containers/{container_id}?force=true", timeout=30)
+        except Exception:
+            pass
+
+
 def chown_instance_data(name):
     data_dir = HOST_ROOT / "instances" / name / "data"
     payload = {
@@ -454,6 +501,132 @@ def create_instance(payload):
             "generate": generate_output,
             "plugins": plugin_output,
         }
+
+
+def update_timestamp():
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+def append_update_log(message):
+    with UPDATE_LOCK:
+        current = UPDATE_JOB.get("log") or ""
+        line = f"[{update_timestamp()}] {message}".rstrip()
+        UPDATE_JOB["log"] = (current + "\n" + line).strip()[-80000:]
+
+
+def set_update_job(**changes):
+    with UPDATE_LOCK:
+        UPDATE_JOB.update(changes)
+        return dict(UPDATE_JOB)
+
+
+def get_update_job():
+    with UPDATE_LOCK:
+        return dict(UPDATE_JOB)
+
+
+def prepare_openclaw_update_source():
+    script = r'''
+set -eu
+repo="${OPENCLAW_UPDATE_REPO:-https://github.com/openclaw/openclaw.git}"
+ref="${OPENCLAW_UPDATE_REF:-}"
+mkdir -p /workspace/.cache/openclaw-update
+cd /workspace/.cache/openclaw-update
+if [ -z "$ref" ]; then
+  ref="$(git ls-remote --tags --refs "$repo" 'refs/tags/v*' \
+    | sed 's#.*refs/tags/##' \
+    | grep -E '^v[0-9]{4}\.[0-9]+\.[0-9]+$' \
+    | sort -V \
+    | tail -n 1)"
+fi
+test -n "$ref"
+rm -rf source.tmp source
+git clone --depth 1 --branch "$ref" "$repo" source.tmp
+mv source.tmp source
+printf '%s\n' "$ref" > source/.oces-source-ref
+printf 'Fonte OpenClaw preparada: %s\n' "$ref"
+'''
+    output = run_helper_container(
+        "openclaw:latest",
+        ["sh", "-lc", script],
+        binds=[f"{HOST_ROOT}:/workspace"],
+        workdir="/workspace",
+        timeout=900,
+        user="root",
+    )
+    source_ref = ""
+    source_ref_path = ROOT / ".cache" / "openclaw-update" / "source" / ".oces-source-ref"
+    if source_ref_path.exists():
+        source_ref = source_ref_path.read_text(encoding="utf-8").strip()
+    return source_ref, output
+
+
+def build_openclaw_latest_image():
+    docker_pull_image("docker", "27-cli", timeout=900)
+    return run_helper_container(
+        "docker:27-cli",
+        ["sh", "-lc", "docker build -t openclaw:latest /workspace/.cache/openclaw-update/source"],
+        binds=[
+            "/var/run/docker.sock:/var/run/docker.sock",
+            f"{HOST_ROOT}:/workspace",
+        ],
+        workdir="/workspace",
+        timeout=3600,
+        user="root",
+    )
+
+
+def run_openclaw_update_job():
+    try:
+        with CREATE_LOCK:
+            append_update_log("Preparando a fonte oficial mais recente do OpenClaw...")
+            source_ref, source_output = prepare_openclaw_update_source()
+            if source_ref:
+                set_update_job(sourceRef=source_ref)
+            if source_output:
+                append_update_log(source_output)
+
+            append_update_log("Construindo a imagem Docker openclaw:latest...")
+            build_output = build_openclaw_latest_image()
+            if build_output:
+                append_update_log(build_output[-12000:])
+
+            instances = sorted(known_instances())
+            append_update_log(f"Recriando {len(instances)} instancia(s) com a nova imagem...")
+            for name in instances:
+                append_update_log(f"Recriando {name}...")
+                recreate_openclaw_container(name)
+                try:
+                    plugin_output = ensure_default_channel_plugins(name)
+                    if plugin_output:
+                        append_update_log(f"{name}: plugins verificados.")
+                    docker_request("POST", f"/containers/oces-{name}/restart?t=10", timeout=45)
+                except Exception as exc:
+                    append_update_log(f"Aviso em {name}: {exc}")
+            append_update_log("Atualizacao concluida.")
+            set_update_job(running=False, ok=True, error=None, finishedAt=update_timestamp())
+    except Exception as exc:
+        append_update_log(f"ERRO: {exc}")
+        set_update_job(running=False, ok=False, error=str(exc), finishedAt=update_timestamp())
+
+
+def start_openclaw_update():
+    current = get_update_job()
+    if current.get("running"):
+        raise ValueError("atualizacao ja em andamento")
+    set_update_job(
+        running=True,
+        ok=None,
+        error=None,
+        log="",
+        startedAt=update_timestamp(),
+        finishedAt=None,
+        sourceRef=None,
+    )
+    thread = threading.Thread(target=run_openclaw_update_job, daemon=True)
+    thread.start()
+    append_update_log("Atualizacao OpenClaw iniciada pelo painel.")
+    return get_update_job()
 
 
 def configure_openai_key(instance, payload):
@@ -916,6 +1089,22 @@ class AdminHandler(SimpleHTTPRequestHandler):
             self.send_header("Cache-Control", "no-store")
             self.end_headers()
             self.wfile.write(result.stdout.encode("utf-8"))
+            return
+
+        if self.command == "GET" and parsed.path == "/api/admin/openclaw-update/status":
+            self.write_json({"ok": True, "job": get_update_job()})
+            return
+
+        if self.command == "POST" and parsed.path == "/api/admin/openclaw-update/start":
+            try:
+                started = start_openclaw_update()
+            except ValueError as exc:
+                self.write_json({"ok": False, "error": str(exc)}, status=409)
+                return
+            except Exception as exc:
+                self.write_json({"ok": False, "error": str(exc)}, status=500)
+                return
+            self.write_json({"ok": True, "job": started})
             return
 
         if self.command == "GET" and parsed.path == "/api/devices/pending":

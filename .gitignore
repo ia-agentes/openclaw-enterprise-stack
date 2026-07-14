@@ -2,6 +2,7 @@
 .env.*
 !templates/env/.env.j2
 *.log
+.cache/
 __pycache__/
 *.pyc
 *.pyo

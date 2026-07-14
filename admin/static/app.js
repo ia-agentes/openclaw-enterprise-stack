@@ -48,6 +48,11 @@ const validateWhatsapp = document.querySelector("#validateWhatsapp");
 const whatsappLoginPanel = document.querySelector("#whatsappLoginPanel");
 const refreshPending = document.querySelector("#refreshPending");
 const pendingAccessList = document.querySelector("#pendingAccessList");
+const startOpenClawUpdate = document.querySelector("#startOpenClawUpdate");
+const refreshOpenClawUpdate = document.querySelector("#refreshOpenClawUpdate");
+const openClawUpdatePanel = document.querySelector("#openClawUpdatePanel");
+
+let openClawUpdateTimer = null;
 
 tokenInput.value = state.token;
 
@@ -59,6 +64,8 @@ saveToken.addEventListener("click", async () => {
 
 refreshAll.addEventListener("click", () => loadStatus(null, { source: "refresh" }));
 refreshPending.addEventListener("click", () => loadPendingAccess());
+startOpenClawUpdate.addEventListener("click", startOpenClawUpdateJob);
+refreshOpenClawUpdate.addEventListener("click", refreshOpenClawUpdateStatus);
 createInstanceForm.addEventListener("submit", createInstance);
 saveOpenAiKey.addEventListener("click", configureOpenAiKey);
 saveAiModel.addEventListener("click", configureAiModel);
@@ -406,6 +413,70 @@ async function restartInstance(instance) {
     setNotice(readableError(error));
   } finally {
     refreshAll.disabled = false;
+  }
+}
+
+async function startOpenClawUpdateJob() {
+  const total = state.data?.instances?.length || "todas as";
+  const message =
+    `Atualizar OpenClaw em ${total} instâncias?\n\n` +
+    "O painel vai baixar a versão oficial mais recente, reconstruir a imagem e reiniciar as instâncias uma por vez.";
+  if (!window.confirm(message)) return;
+
+  startOpenClawUpdate.disabled = true;
+  refreshOpenClawUpdate.disabled = true;
+  setNotice("Atualização OpenClaw iniciada. Acompanhe o progresso abaixo.");
+  try {
+    const data = await apiPost("/api/admin/openclaw-update/start");
+    renderOpenClawUpdatePanel(data.job || data);
+    scheduleOpenClawUpdatePoll();
+  } catch (error) {
+    setNotice(readableError(error));
+    await refreshOpenClawUpdateStatus();
+  } finally {
+    refreshOpenClawUpdate.disabled = false;
+  }
+}
+
+async function refreshOpenClawUpdateStatus() {
+  refreshOpenClawUpdate.disabled = true;
+  try {
+    const data = await api("/api/admin/openclaw-update/status");
+    renderOpenClawUpdatePanel(data.job || data);
+    if ((data.job || data).running) {
+      scheduleOpenClawUpdatePoll();
+    }
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    refreshOpenClawUpdate.disabled = false;
+  }
+}
+
+function scheduleOpenClawUpdatePoll() {
+  window.clearTimeout(openClawUpdateTimer);
+  openClawUpdateTimer = window.setTimeout(refreshOpenClawUpdateStatus, 5000);
+}
+
+function renderOpenClawUpdatePanel(job = {}) {
+  const status = job.running ? "Atualizando" : job.ok === true ? "Concluído" : job.ok === false ? "Falhou" : "Aguardando";
+  const statusClass = job.running ? "warn" : job.ok === true ? "ok" : job.ok === false ? "bad" : "idle";
+  const log = job.log || "Nenhuma atualização iniciada ainda.";
+  startOpenClawUpdate.disabled = Boolean(job.running);
+  openClawUpdatePanel.classList.remove("hidden");
+  openClawUpdatePanel.innerHTML = `
+    <div class="update-meta">
+      ${pill(statusClass, status)}
+      ${job.sourceRef ? `<span>Fonte: ${escapeHtml(job.sourceRef)}</span>` : ""}
+      ${job.startedAt ? `<span>Início: ${escapeHtml(job.startedAt)}</span>` : ""}
+      ${job.finishedAt ? `<span>Fim: ${escapeHtml(job.finishedAt)}</span>` : ""}
+      ${job.error ? `<strong>${escapeHtml(job.error)}</strong>` : ""}
+    </div>
+    <pre>${escapeHtml(log)}</pre>
+  `;
+  if (job.ok === true) {
+    setNotice("Atualização OpenClaw concluída. Vou atualizar os status das instâncias.");
+    window.setTimeout(() => loadStatus(null, { source: "refresh" }), 8000);
   }
 }
 
