@@ -1,17 +1,26 @@
 :root {
   color-scheme: light;
-  --bg: #f5f7fa;
+  --bg: #f6f8fc;
   --panel: #ffffff;
-  --line: #d9e0e8;
-  --text: #16202a;
-  --muted: #617080;
-  --ok: #147a4b;
-  --warn: #a15c00;
-  --bad: #b42318;
-  --idle: #6b7280;
-  --accent: #d92d20;
-  --accent-soft: #fff1f0;
-  --shadow: 0 10px 30px rgba(16, 24, 40, 0.08);
+  --line: #d9deec;
+  --text: #111840;
+  --muted: #647091;
+  --navy: #252b61;
+  --navy-strong: #171d4a;
+  --navy-soft: #eef1fb;
+  --yellow: #ffc800;
+  --yellow-hover: #f2b900;
+  --yellow-soft: #fff7d6;
+  --ok: #137349;
+  --warn: #946200;
+  --bad: #c91111;
+  --idle: #6d7280;
+  --accent: var(--yellow);
+  --accent-hover: var(--yellow-hover);
+  --accent-contrast: var(--navy-strong);
+  --accent-soft: var(--yellow-soft);
+  --danger-soft: #fff1f1;
+  --shadow: 0 12px 28px rgba(17, 24, 64, 0.08);
 }
 
 * {
@@ -43,14 +52,21 @@ button {
 }
 
 button:hover {
-  border-color: #aeb8c4;
+  border-color: #aeb7d6;
 }
 
 button.primary,
 #refreshAll {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
+  font-weight: 700;
+}
+
+button.primary:hover,
+#refreshAll:hover {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
 }
 
 .connection-status {
@@ -102,8 +118,8 @@ button.primary,
 }
 
 button.danger {
-  border-color: #f6b6b0;
-  background: var(--accent-soft);
+  border-color: #f1aaaa;
+  background: var(--danger-soft);
   color: var(--bad);
 }
 
@@ -129,6 +145,11 @@ select {
   justify-content: space-between;
   gap: 18px;
   margin-bottom: 18px;
+  padding: 14px 16px;
+  border-radius: 8px;
+  background: var(--navy);
+  color: #fff;
+  box-shadow: var(--shadow);
 }
 
 .actions {
@@ -141,7 +162,7 @@ select {
 
 .eyebrow {
   margin: 0 0 4px;
-  color: var(--muted);
+  color: #dce3ff;
   font-size: 13px;
 }
 
@@ -149,6 +170,7 @@ h1 {
   margin: 0;
   font-size: 30px;
   font-weight: 720;
+  color: inherit;
 }
 
 .actions {
@@ -182,12 +204,14 @@ h1 {
 
 .summary > div {
   padding: 16px;
+  border-top: 4px solid var(--yellow);
 }
 
 .summary span {
   display: block;
   font-size: 28px;
   font-weight: 740;
+  color: var(--navy);
 }
 
 .summary small {
@@ -198,8 +222,8 @@ h1 {
   padding: 12px 14px;
   margin-bottom: 16px;
   color: var(--bad);
-  background: #fff5f5;
-  border-color: #f6b6b0;
+  background: var(--danger-soft);
+  border-color: #f1aaaa;
 }
 
 .hidden {
@@ -250,7 +274,8 @@ h1 {
 .ai-config-form button {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
+  font-weight: 700;
 }
 
 .oauth-panel {
@@ -279,9 +304,10 @@ h1 {
 }
 
 .oauth-links a {
-  color: var(--accent);
+  color: var(--navy);
   overflow-wrap: anywhere;
   font-size: 13px;
+  font-weight: 700;
 }
 
 .device-code-card {
@@ -289,9 +315,9 @@ h1 {
   grid-template-columns: minmax(240px, 1.4fr) minmax(150px, 0.7fr);
   gap: 10px;
   padding: 12px;
-  border: 1px solid #fecaca;
+  border: 1px solid #ffe082;
   border-radius: 8px;
-  background: #fff7f7;
+  background: var(--yellow-soft);
 }
 
 .device-code-card div {
@@ -307,7 +333,7 @@ h1 {
 }
 
 .device-code-card a {
-  color: var(--accent);
+  color: var(--navy);
   overflow-wrap: anywhere;
   font-weight: 700;
 }
@@ -318,10 +344,10 @@ h1 {
   min-height: 38px;
   width: fit-content;
   padding: 0 12px;
-  border: 1px solid #fca5a5;
+  border: 1px solid #ffdd57;
   border-radius: 8px;
   background: #fff;
-  color: var(--text);
+  color: var(--navy);
   font-size: 20px;
   font-weight: 800;
   letter-spacing: 0;
@@ -339,7 +365,7 @@ h1 {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #101828;
+  background: #111840;
   color: #f8fafc;
   font-size: 12px;
   line-height: 1.45;
@@ -408,7 +434,8 @@ h1 {
 .channel-config-form button {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
+  font-weight: 700;
 }
 
 .terminal-panel {
@@ -443,7 +470,7 @@ h1 {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #101828;
+  background: #111840;
   color: #f8fafc;
   font-size: 12px;
   line-height: 1.45;
@@ -494,7 +521,8 @@ h1 {
 .creator-form button {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
+  font-weight: 700;
 }
 
 .pending-access {
@@ -534,7 +562,7 @@ h1 {
   padding: 10px;
   border: 1px solid var(--line);
   border-radius: 8px;
-  background: #fbfcfd;
+  background: #fbfcff;
 }
 
 .pending-item div {
@@ -557,7 +585,8 @@ h1 {
 .pending-item button {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-contrast);
+  font-weight: 700;
 }
 
 .empty-state {
@@ -641,20 +670,20 @@ h1 {
 
 .ok {
   color: var(--ok);
-  background: #ecfdf3;
-  border-color: #abefc6;
+  background: #edfdf5;
+  border-color: #a8e7c2;
 }
 
 .warn {
   color: var(--warn);
-  background: #fffaeb;
-  border-color: #fedf89;
+  background: var(--yellow-soft);
+  border-color: #ffdf70;
 }
 
 .bad {
   color: var(--bad);
-  background: #fef3f2;
-  border-color: #fecdca;
+  background: var(--danger-soft);
+  border-color: #f1aaaa;
 }
 
 .idle {
@@ -687,7 +716,7 @@ th {
   font-size: 12px;
   text-transform: uppercase;
   letter-spacing: 0;
-  background: #fbfcfd;
+  background: var(--navy-soft);
 }
 
 tr:last-child td {
