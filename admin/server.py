@@ -7,9 +7,11 @@ import posixpath
 import re
 import shutil
 import socket
+import sqlite3
 import subprocess
 import threading
 import time
+from datetime import datetime, timezone
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 from urllib.parse import parse_qs, unquote, urlparse
@@ -44,6 +46,10 @@ TELEGRAM_USER_ID_RE = re.compile(r"^(?:telegram:|tg:)?[0-9]{4,20}$", re.IGNORECA
 TELEGRAM_GROUP_ID_RE = re.compile(r"^-?[0-9]{5,30}$")
 WHATSAPP_GROUP_ID_RE = re.compile(r"^[A-Za-z0-9._:+-]{5,120}@g\.us$")
 ANSI_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
+WHATSAPP_TIMELOCK_RE = re.compile(
+    r"WhatsApp reachout timelock is active;.*?type=([A-Z0-9_]+).*?until=([0-9T:.\-]+Z)",
+    re.IGNORECASE,
+)
 OPENAI_MODELS = {
     "openai/gpt-5.5",
     "openai/gpt-5.5-mini",
@@ -1032,6 +1038,57 @@ def approve_whatsapp_pairing(instance, payload):
     return {"ok": True, "instance": instance, "action": "whatsapp-pairing-approve", "code": code, "output": output}
 
 
+def parse_iso_utc(value):
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def whatsapp_timelock_alert(instance):
+    db_path = instance_state_dir(instance) / "state" / "openclaw.sqlite"
+    if not db_path.exists():
+        return None
+    connection = None
+    try:
+        connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=3)
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            """
+            SELECT target, last_error, failed_at, updated_at, substr(entry_json, 1, 1200) AS entry_json
+            FROM delivery_queue_entries
+            WHERE channel = 'whatsapp'
+              AND status = 'failed'
+              AND last_error LIKE '%reachout timelock%'
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """
+        ).fetchall()
+    except sqlite3.Error:
+        return None
+    finally:
+        if connection is not None:
+            connection.close()
+    if not rows:
+        return None
+
+    row = rows[0]
+    error = row["last_error"] or ""
+    match = WHATSAPP_TIMELOCK_RE.search(error)
+    until = match.group(2) if match else ""
+    until_dt = parse_iso_utc(until) if until else None
+    return {
+        "kind": "reachout_timelock",
+        "active": bool(until_dt and until_dt > datetime.now(timezone.utc)),
+        "type": match.group(1) if match else "",
+        "until": until,
+        "target": row["target"] or "",
+        "message": error,
+        "failedAt": row["failed_at"],
+        "updatedAt": row["updated_at"],
+    }
+
+
 def config_access_entries(config, meta):
     indexed = access_meta_index(meta)
     entries = []
@@ -1323,6 +1380,7 @@ def whatsapp_login_status(instance):
         "exitCode": int(exit_raw) if exit_raw.isdigit() else None,
         "log": log,
         "number": env.get("WHATSAPP_EXPECTED_NUMBER", ""),
+        "deliveryAlert": whatsapp_timelock_alert(instance),
     }
 
 

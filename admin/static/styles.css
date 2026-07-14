@@ -571,6 +571,29 @@ h1 {
   overflow-wrap: normal;
 }
 
+.timelock-alert {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border: 1px solid #f2b705;
+  border-radius: 8px;
+  background: #fff7d6;
+  color: #332600;
+}
+
+.timelock-alert strong {
+  color: #111840;
+}
+
+.timelock-alert span,
+.timelock-alert small {
+  font-size: 13px;
+}
+
+.timelock-alert small {
+  color: #5b4a00;
+}
+
 .pairing-panel {
   grid-column: 2;
   display: grid;

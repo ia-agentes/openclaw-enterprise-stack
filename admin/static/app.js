@@ -900,6 +900,7 @@ function renderWhatsAppPanel(data) {
   const status = data.running ? "Aguardando leitura do QR Code" : data.exitCode === 0 ? "Concluído" : "Parado";
   const log = data.log || "Nenhum pareamento de WhatsApp iniciado nesta instância.";
   const pending = Array.isArray(data.pairing?.pending) ? data.pairing.pending : [];
+  const deliveryAlert = renderWhatsAppDeliveryAlert(data.deliveryAlert);
   if (data.number !== undefined) {
     whatsappNumber.value = data.number || "";
   }
@@ -914,6 +915,7 @@ function renderWhatsAppPanel(data) {
       <strong>Autorizações WhatsApp</strong>
       <span>${pending.length ? `${pending.length} pendente(s)` : "Nenhuma pendente"}</span>
     </div>
+    ${deliveryAlert}
     ${
       pending.length
         ? `<div class="pending-list">${pending.map(renderWhatsAppPending).join("")}</div>`
@@ -927,6 +929,23 @@ function renderWhatsAppPanel(data) {
       approveWhatsAppCode();
     });
   });
+}
+
+function renderWhatsAppDeliveryAlert(alert) {
+  if (!alert || alert.kind !== "reachout_timelock") return "";
+  const until = formatDateTime(alert.until);
+  const target = alert.target ? ` para ${alert.target}` : "";
+  const status = alert.active ? "Envio bloqueado temporariamente" : "Bloqueio recente detectado";
+  return `
+    <div class="timelock-alert">
+      <strong>${escapeHtml(status)}</strong>
+      <span>
+        O WhatsApp está recebendo mensagens, mas o envio de respostas${escapeHtml(target)}
+        está bloqueado pela trava de companion device${until ? ` até ${escapeHtml(until)}` : ""}.
+      </span>
+      <small>${escapeHtml(alert.type || "reachout timelock")}</small>
+    </div>
+  `;
 }
 
 function renderWhatsAppPending(item) {
@@ -1145,6 +1164,7 @@ function openAiPill(openai = {}) {
 
 function channelPill(channel = {}) {
   if (!channel.present) return pill("idle", "Ausente");
+  if (channel.deliveryAlert?.active) return pill("warn", "Envio bloqueado");
   if (channel.connected || channel.linked || channel.lastProbeOk) return pill("ok", "Conectado");
   if (channel.configured) return pill("warn", channel.statusState || channel.healthState || "Pendente");
   return pill("idle", channel.statusState || "Não configurado");
@@ -1213,6 +1233,17 @@ function readableError(error) {
     return "Token administrativo inválido ou ausente.";
   }
   return text;
+}
+
+function formatDateTime(value) {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString("pt-BR", {
+    timeZone: "America/Sao_Paulo",
+    dateStyle: "short",
+    timeStyle: "medium",
+  });
 }
 
 function escapeHtml(value) {

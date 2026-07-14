@@ -5,11 +5,14 @@ import json
 import os
 import shutil
 import socket
+import sqlite3
 import subprocess
 import sys
 import time
 import urllib.error
 import urllib.request
+import re
+from datetime import datetime, timezone
 from pathlib import Path
 
 try:
@@ -20,6 +23,10 @@ except ModuleNotFoundError:
 
 ROOT = Path(__file__).resolve().parent.parent
 DOCKER_SOCKET = os.environ.get("DOCKER_SOCKET", "/var/run/docker.sock")
+WHATSAPP_TIMELOCK_RE = re.compile(
+    r"WhatsApp reachout timelock is active;.*?type=([A-Z0-9_]+).*?until=([0-9T:.\-]+Z)",
+    re.IGNORECASE,
+)
 
 
 def run(command, timeout=30):
@@ -360,6 +367,57 @@ def channel_absent():
     }
 
 
+def parse_iso_utc(value):
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00")).astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def whatsapp_timelock_alert(instance):
+    db_path = ROOT / "instances" / instance / "data" / ".openclaw" / "state" / "openclaw.sqlite"
+    if not db_path.exists():
+        return None
+    connection = None
+    try:
+        connection = sqlite3.connect(f"file:{db_path}?mode=ro", uri=True, timeout=3)
+        connection.row_factory = sqlite3.Row
+        rows = connection.execute(
+            """
+            SELECT target, last_error, failed_at, updated_at
+            FROM delivery_queue_entries
+            WHERE channel = 'whatsapp'
+              AND status = 'failed'
+              AND last_error LIKE '%reachout timelock%'
+            ORDER BY updated_at DESC
+            LIMIT 1
+            """
+        ).fetchall()
+    except sqlite3.Error:
+        return None
+    finally:
+        if connection is not None:
+            connection.close()
+    if not rows:
+        return None
+
+    row = rows[0]
+    error = row["last_error"] or ""
+    match = WHATSAPP_TIMELOCK_RE.search(error)
+    until = match.group(2) if match else ""
+    until_dt = parse_iso_utc(until) if until else None
+    return {
+        "kind": "reachout_timelock",
+        "active": bool(until_dt and until_dt > datetime.now(timezone.utc)),
+        "type": match.group(1) if match else "",
+        "until": until,
+        "target": row["target"] or "",
+        "message": error,
+        "failedAt": row["failed_at"],
+        "updatedAt": row["updated_at"],
+    }
+
+
 def coalesce_bool(*values):
     for value in values:
         if isinstance(value, bool):
@@ -412,6 +470,8 @@ def instance_status(name, cfg, args):
         item["version"] = openclaw_version(container)
         item["models"] = openclaw_models(container)
         item["channels"] = channels_status(container) if args.channels else None
+        if item["channels"] and item["channels"].get("whatsapp"):
+            item["channels"]["whatsapp"]["deliveryAlert"] = whatsapp_timelock_alert(name)
     return item
 
 
