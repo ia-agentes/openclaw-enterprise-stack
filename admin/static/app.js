@@ -30,6 +30,7 @@ const browserConfigForm = document.querySelector("#browserConfigForm");
 const browserInstance = document.querySelector("#browserInstance");
 const browserProfileName = document.querySelector("#browserProfileName");
 const browserUserDataDir = document.querySelector("#browserUserDataDir");
+const browserCdpUrl = document.querySelector("#browserCdpUrl");
 const browserAttachOnly = document.querySelector("#browserAttachOnly");
 const saveBrowserConfig = document.querySelector("#saveBrowserConfig");
 const refreshBrowserConfig = document.querySelector("#refreshBrowserConfig");
@@ -700,6 +701,7 @@ function hydrateBrowserForm(browser = {}) {
   if (!edge) return;
   browserProfileName.value = edge.name || "edge";
   browserUserDataDir.value = edge.userDataDir || "~/.config/microsoft-edge";
+  browserCdpUrl.value = edge.cdpUrl || "http://127.0.0.1:9222";
   browserAttachOnly.checked = edge.attachOnly !== false;
 }
 
@@ -711,6 +713,7 @@ async function saveBrowserSettings(event) {
     driver: "existing-session",
     attachOnly: browserAttachOnly.checked,
     userDataDir: browserUserDataDir.value.trim(),
+    cdpUrl: browserCdpUrl.value.trim(),
     color: "#0078D7",
   };
   if (!instance) {

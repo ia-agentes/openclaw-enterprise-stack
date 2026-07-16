@@ -1276,17 +1276,25 @@ def normalize_browser_payload(payload):
         raise ValueError("informe o diretorio do perfil do navegador")
     if "\x00" in user_data_dir or "\n" in user_data_dir or "\r" in user_data_dir:
         raise ValueError("diretorio do perfil invalido")
+    cdp_url = str(payload.get("cdpUrl") or "").strip()
+    if cdp_url:
+        parsed_cdp = urlparse(cdp_url)
+        if parsed_cdp.scheme not in ("http", "https") or not parsed_cdp.netloc:
+            raise ValueError("CDP URL precisa ser uma URL http(s), exemplo http://127.0.0.1:9222")
     color = str(payload.get("color") or "#0078D7").strip()
     if not re.match(r"^#[0-9A-Fa-f]{6}$", color):
         raise ValueError("cor precisa estar no formato #RRGGBB")
+    profile = {
+        "driver": driver,
+        "attachOnly": bool(payload.get("attachOnly", True)),
+        "userDataDir": user_data_dir,
+        "color": color,
+    }
+    if cdp_url:
+        profile["cdpUrl"] = cdp_url
     return {
         "profileName": profile_name,
-        "profile": {
-            "driver": driver,
-            "attachOnly": bool(payload.get("attachOnly", True)),
-            "userDataDir": user_data_dir,
-            "color": color,
-        },
+        "profile": profile,
     }
 
 
