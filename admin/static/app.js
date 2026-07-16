@@ -26,6 +26,15 @@ const saveAiModel = document.querySelector("#saveAiModel");
 const startOpenAiOAuth = document.querySelector("#startOpenAiOAuth");
 const refreshOpenAiOAuth = document.querySelector("#refreshOpenAiOAuth");
 const openAiOAuthPanel = document.querySelector("#openAiOAuthPanel");
+const browserConfigForm = document.querySelector("#browserConfigForm");
+const browserInstance = document.querySelector("#browserInstance");
+const browserProfileName = document.querySelector("#browserProfileName");
+const browserUserDataDir = document.querySelector("#browserUserDataDir");
+const browserAttachOnly = document.querySelector("#browserAttachOnly");
+const saveBrowserConfig = document.querySelector("#saveBrowserConfig");
+const refreshBrowserConfig = document.querySelector("#refreshBrowserConfig");
+const validateBrowserConfig = document.querySelector("#validateBrowserConfig");
+const browserConfigPanel = document.querySelector("#browserConfigPanel");
 const telegramConfigForm = document.querySelector("#telegramConfigForm");
 const telegramInstance = document.querySelector("#telegramInstance");
 const telegramBotToken = document.querySelector("#telegramBotToken");
@@ -81,6 +90,10 @@ saveAiModel.addEventListener("click", configureAiModel);
 startOpenAiOAuth.addEventListener("click", startOAuthLogin);
 refreshOpenAiOAuth.addEventListener("click", refreshOAuthLogin);
 aiConfigForm.addEventListener("submit", (event) => event.preventDefault());
+browserConfigForm.addEventListener("submit", saveBrowserSettings);
+refreshBrowserConfig.addEventListener("click", () => loadBrowserConfig());
+validateBrowserConfig.addEventListener("click", validateBrowserSettings);
+browserInstance.addEventListener("change", () => loadBrowserConfig());
 saveTelegramConfig.addEventListener("click", saveTelegramSettings);
 refreshTelegramPairings.addEventListener("click", refreshTelegramStatus);
 approveTelegramPairing.addEventListener("click", approveTelegramCode);
@@ -297,11 +310,15 @@ function render(data) {
   cards.innerHTML = instances.map(renderCard).join("");
   rows.innerHTML = instances.map(renderRow).join("");
   fillAiInstances(instances);
+  fillBrowserInstances(instances);
   fillTelegramInstances(instances);
   fillWhatsAppInstances(instances);
   fillAccessInstances(instances);
   if (accessInstance.value) {
     loadChannelAccess();
+  }
+  if (browserInstance.value) {
+    loadBrowserConfig({ silent: true });
   }
 
   document.querySelectorAll("[data-refresh-instance]").forEach((button) => {
@@ -351,6 +368,16 @@ function fillWhatsAppInstances(instances) {
     .join("");
   if (instances.some((item) => item.name === selected)) {
     whatsappInstance.value = selected;
+  }
+}
+
+function fillBrowserInstances(instances) {
+  const selected = browserInstance.value;
+  browserInstance.innerHTML = instances
+    .map((item) => `<option value="${escapeAttribute(item.name)}">${escapeHtml(title(item.name))}</option>`)
+    .join("");
+  if (instances.some((item) => item.name === selected)) {
+    browserInstance.value = selected;
   }
 }
 
@@ -641,6 +668,130 @@ function renderOAuthPanel(data) {
     ${deviceCard}
     ${links ? `<div class="oauth-links">${links}</div>` : ""}
     <pre>${escapeHtml(log)}</pre>
+  `;
+}
+
+async function loadBrowserConfig(options = {}) {
+  const instance = browserInstance.value;
+  if (!instance) {
+    browserConfigPanel.innerHTML = '<div class="empty-state">Selecione uma instância.</div>';
+    browserConfigPanel.classList.remove("hidden");
+    return;
+  }
+  refreshBrowserConfig.disabled = true;
+  try {
+    const data = await api(`/api/instances/${encodeURIComponent(instance)}/browser`);
+    hydrateBrowserForm(data.browser || {});
+    if (options.silent) return;
+    renderBrowserPanel(data);
+  } catch (error) {
+    if (!options.silent) setNotice(readableError(error));
+    browserConfigPanel.classList.remove("hidden");
+    browserConfigPanel.innerHTML = `<div class="empty-state">${escapeHtml(readableError(error))}</div>`;
+  } finally {
+    refreshBrowserConfig.disabled = false;
+  }
+}
+
+function hydrateBrowserForm(browser = {}) {
+  const edge =
+    (browser.profiles || []).find((profile) => profile.name === "edge") ||
+    (browser.profiles || [])[0];
+  if (!edge) return;
+  browserProfileName.value = edge.name || "edge";
+  browserUserDataDir.value = edge.userDataDir || "~/.config/microsoft-edge";
+  browserAttachOnly.checked = edge.attachOnly !== false;
+}
+
+async function saveBrowserSettings(event) {
+  event.preventDefault();
+  const instance = browserInstance.value;
+  const payload = {
+    profileName: browserProfileName.value.trim() || "edge",
+    driver: "existing-session",
+    attachOnly: browserAttachOnly.checked,
+    userDataDir: browserUserDataDir.value.trim(),
+    color: "#0078D7",
+  };
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  if (!payload.userDataDir) {
+    setNotice("Informe o diretório do perfil do navegador.");
+    return;
+  }
+  const message =
+    `Salvar perfil ${payload.profileName} em ${title(instance)} e reiniciar a instância?\n\n` +
+    "O OpenClaw passará a tentar usar uma sessão existente do Edge nesse diretório.";
+  if (!window.confirm(message)) return;
+
+  saveBrowserConfig.disabled = true;
+  refreshAll.disabled = true;
+  setNotice(`Aplicando navegador em ${title(instance)}...`);
+  try {
+    const data = await apiJsonPost(`/api/instances/${encodeURIComponent(instance)}/browser`, payload);
+    renderBrowserPanel(data);
+    setNotice(`Configuração de navegador aplicada em ${title(instance)}. A instância foi reiniciada.`);
+    window.setTimeout(() => loadStatus(instance), 7000);
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    saveBrowserConfig.disabled = false;
+    refreshAll.disabled = false;
+  }
+}
+
+async function validateBrowserSettings() {
+  const instance = browserInstance.value;
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  validateBrowserConfig.disabled = true;
+  setNotice(`Validando navegador em ${title(instance)}...`);
+  try {
+    const data = await apiPost(`/api/instances/${encodeURIComponent(instance)}/browser/validate`);
+    renderBrowserPanel(data);
+    setNotice(data.validated ? `Navegador validado em ${title(instance)}.` : `Validação de navegador retornou alerta em ${title(instance)}.`);
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    validateBrowserConfig.disabled = false;
+  }
+}
+
+function renderBrowserPanel(data = {}) {
+  const browser = data.browser || {};
+  const profiles = browser.profiles || [];
+  const raw = JSON.stringify(browser.raw || {}, null, 2);
+  browserConfigPanel.classList.remove("hidden");
+  browserConfigPanel.innerHTML = `
+    <div class="oauth-status">
+      <strong>${browser.enabled ? "Browser habilitado" : "Browser desabilitado"}</strong>
+      <span>${profiles.length ? `${profiles.length} perfil(is)` : "Nenhum perfil configurado"}</span>
+      ${data.validated === true ? "<span>CLI validada</span>" : ""}
+    </div>
+    ${
+      profiles.length
+        ? `<div class="browser-profile-list">${profiles.map(renderBrowserProfile).join("")}</div>`
+        : '<div class="empty-state">Nenhum perfil de navegador configurado nesta instância.</div>'
+    }
+    ${data.output ? `<pre>${escapeHtml(data.output)}</pre>` : ""}
+    <pre>${escapeHtml(raw)}</pre>
+  `;
+}
+
+function renderBrowserProfile(profile) {
+  return `
+    <div class="browser-profile">
+      <div>
+        <strong>${escapeHtml(profile.name || "perfil")}</strong>
+        <span>${escapeHtml(profile.driver || "-")}</span>
+      </div>
+      <code>${escapeHtml(profile.userDataDir || profile.cdpUrl || profile.executablePath || "-")}</code>
+      ${pill(profile.attachOnly ? "warn" : "ok", profile.attachOnly ? "Sessão existente" : "Gerenciado")}
+    </div>
   `;
 }
 

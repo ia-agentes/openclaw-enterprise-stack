@@ -45,6 +45,7 @@ PHONE_RE = re.compile(r"^\+?[0-9]{10,15}$")
 TELEGRAM_USER_ID_RE = re.compile(r"^(?:telegram:|tg:)?[0-9]{4,20}$", re.IGNORECASE)
 TELEGRAM_GROUP_ID_RE = re.compile(r"^-?[0-9]{5,30}$")
 WHATSAPP_GROUP_ID_RE = re.compile(r"^[A-Za-z0-9._:+-]{5,120}@g\.us$")
+BROWSER_PROFILE_RE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
 ANSI_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 WHATSAPP_TIMELOCK_RE = re.compile(
     r"WhatsApp reachout timelock is active;.*?type=([A-Z0-9_]+).*?until=([0-9T:.\-]+Z)",
@@ -1227,6 +1228,128 @@ def delete_channel_access(instance, payload):
     return {"ok": True, "instance": instance, "items": list_channel_access(instance)["items"]}
 
 
+def browser_config_summary(config):
+    browser = config.get("browser") if isinstance(config.get("browser"), dict) else {}
+    profiles = browser.get("profiles") if isinstance(browser.get("profiles"), dict) else {}
+    items = []
+    for name, profile in sorted(profiles.items()):
+        if not isinstance(profile, dict):
+            continue
+        items.append(
+            {
+                "name": name,
+                "driver": profile.get("driver", ""),
+                "attachOnly": bool(profile.get("attachOnly")),
+                "userDataDir": profile.get("userDataDir", ""),
+                "cdpUrl": profile.get("cdpUrl", ""),
+                "executablePath": profile.get("executablePath", ""),
+                "color": profile.get("color", ""),
+            }
+        )
+    return {
+        "enabled": bool(browser.get("enabled")),
+        "profiles": items,
+        "raw": browser if isinstance(browser, dict) else {},
+    }
+
+
+def get_browser_config(instance):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    config = read_json_file(instance_config_path(instance), {})
+    if not isinstance(config, dict):
+        config = {}
+    return {"ok": True, "instance": instance, "browser": browser_config_summary(config)}
+
+
+def normalize_browser_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("payload invalido")
+    profile_name = str(payload.get("profileName") or "edge").strip().lower()
+    if not BROWSER_PROFILE_RE.match(profile_name):
+        raise ValueError("perfil precisa usar letras minusculas, numeros, hifen ou underline")
+    driver = str(payload.get("driver") or "existing-session").strip()
+    if driver != "existing-session":
+        raise ValueError("este painel gerencia apenas o modo existing-session")
+    user_data_dir = str(payload.get("userDataDir") or "").strip()
+    if not user_data_dir:
+        raise ValueError("informe o diretorio do perfil do navegador")
+    if "\x00" in user_data_dir or "\n" in user_data_dir or "\r" in user_data_dir:
+        raise ValueError("diretorio do perfil invalido")
+    color = str(payload.get("color") or "#0078D7").strip()
+    if not re.match(r"^#[0-9A-Fa-f]{6}$", color):
+        raise ValueError("cor precisa estar no formato #RRGGBB")
+    return {
+        "profileName": profile_name,
+        "profile": {
+            "driver": driver,
+            "attachOnly": bool(payload.get("attachOnly", True)),
+            "userDataDir": user_data_dir,
+            "color": color,
+        },
+    }
+
+
+def save_browser_config(instance, payload):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    normalized = normalize_browser_payload(payload)
+
+    with CREATE_LOCK:
+        config_path = instance_config_path(instance)
+        config = read_json_file(config_path, {})
+        if not isinstance(config, dict):
+            config = {}
+        browser = config.setdefault("browser", {})
+        if not isinstance(browser, dict):
+            config["browser"] = {}
+            browser = config["browser"]
+        browser["enabled"] = True
+        profiles = browser.setdefault("profiles", {})
+        if not isinstance(profiles, dict):
+            browser["profiles"] = {}
+            profiles = browser["profiles"]
+        profiles[normalized["profileName"]] = normalized["profile"]
+        write_json_file(config_path, config)
+        chown_instance_data(instance)
+        docker_request("POST", f"/containers/oces-{instance}/restart?t=10", timeout=45)
+
+    return {
+        "ok": True,
+        "instance": instance,
+        "action": "browser-config",
+        "profileName": normalized["profileName"],
+        "browser": browser_config_summary(config),
+    }
+
+
+def validate_browser_config(instance):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    config = read_json_file(instance_config_path(instance), {})
+    if not isinstance(config, dict):
+        config = {}
+    output = ""
+    ok = False
+    try:
+        output = docker_exec(
+            f"oces-{instance}",
+            ["openclaw", "browser", "profiles"],
+            timeout=45,
+        )
+        ok = True
+    except Exception as exc:
+        output = str(exc)
+    return {
+        "ok": True,
+        "instance": instance,
+        "action": "browser-validate",
+        "validated": ok,
+        "browser": browser_config_summary(config),
+        "output": ANSI_RE.sub("", output).replace("\r", ""),
+    }
+
+
 def start_openai_oauth(instance):
     if instance not in known_instances():
         raise ValueError("unknown instance")
@@ -1569,6 +1692,24 @@ class AdminHandler(SimpleHTTPRequestHandler):
                 return
 
             if (
+                len(parts) == 4
+                and parts[0] == "api"
+                and parts[1] == "instances"
+                and parts[3] == "browser"
+                and self.command == "GET"
+            ):
+                try:
+                    config = get_browser_config(unquote(parts[2]))
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(config)
+                return
+
+            if (
                 len(parts) == 6
                 and parts[0] == "api"
                 and parts[1] == "instances"
@@ -1744,6 +1885,32 @@ class AdminHandler(SimpleHTTPRequestHandler):
                     self.write_json({"ok": False, "error": str(exc)}, status=500)
                     return
                 self.write_json(saved)
+                return
+
+            if len(parts) == 4 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "browser":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                    saved = save_browser_config(unquote(parts[2]), payload)
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(saved)
+                return
+
+            if len(parts) == 5 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "browser" and parts[4] == "validate":
+                try:
+                    data = validate_browser_config(unquote(parts[2]))
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(data)
                 return
 
             if len(parts) == 5 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "access" and parts[4] == "remove":

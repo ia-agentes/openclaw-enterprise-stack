@@ -93,6 +93,35 @@
         <div id="openAiOAuthPanel" class="oauth-panel hidden"></div>
       </section>
 
+      <section class="browser-config" aria-label="Configuração de navegador">
+        <div>
+          <h2>Navegador por instância</h2>
+          <p>Configura o OpenClaw para usar uma sessão existente do Edge no host da instância.</p>
+        </div>
+        <form id="browserConfigForm" class="browser-config-form">
+          <label>
+            Instância
+            <select id="browserInstance" name="instance"></select>
+          </label>
+          <label>
+            Perfil
+            <input id="browserProfileName" name="profileName" type="text" autocomplete="off" value="edge" />
+          </label>
+          <label>
+            Diretório do perfil
+            <input id="browserUserDataDir" name="userDataDir" type="text" autocomplete="off" value="~/.config/microsoft-edge" />
+          </label>
+          <label class="checkbox-label">
+            <input id="browserAttachOnly" name="attachOnly" type="checkbox" checked />
+            Usar apenas sessão já aberta
+          </label>
+          <button id="saveBrowserConfig" type="submit">Salvar e aplicar</button>
+          <button id="refreshBrowserConfig" type="button">Ver configuração</button>
+          <button id="validateBrowserConfig" type="button">Validar navegador</button>
+        </form>
+        <div id="browserConfigPanel" class="browser-panel hidden"></div>
+      </section>
+
       <section class="creator" aria-label="Criar instância">
         <div>
           <h2>Nova instância</h2>
