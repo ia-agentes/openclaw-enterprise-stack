@@ -268,6 +268,37 @@ def read_json_file(path, default):
     return data if data is not None else default
 
 
+def get_gateway_token(instance):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+
+    env_path = ROOT / "instances" / instance / ".env"
+    token = read_env(env_path).get("OPENCLAW_GATEWAY_TOKEN", "").strip()
+    source = ".env" if token else ""
+
+    if not token:
+        config = read_json_file(instance_config_path(instance), {})
+        gateway = config.get("gateway") if isinstance(config.get("gateway"), dict) else {}
+        auth = gateway.get("auth") if isinstance(gateway.get("auth"), dict) else {}
+        raw_token = str(auth.get("token", "")).strip()
+        if raw_token and not raw_token.startswith("${"):
+            token = raw_token
+            source = "openclaw.json"
+
+    if not token:
+        raise ValueError("token do gateway nao encontrado para esta instancia")
+
+    stack = load_stack()
+    cfg = stack["instances"].get(instance, {})
+    return {
+        "ok": True,
+        "instance": instance,
+        "domain": cfg.get("domain", ""),
+        "token": token,
+        "source": source,
+    }
+
+
 def write_json_file(path, data):
     path.parent.mkdir(parents=True, exist_ok=True)
     if path.exists():
@@ -1715,6 +1746,24 @@ class AdminHandler(SimpleHTTPRequestHandler):
                     self.write_json({"ok": False, "error": str(exc)}, status=500)
                     return
                 self.write_json(config)
+                return
+
+            if (
+                len(parts) == 4
+                and parts[0] == "api"
+                and parts[1] == "instances"
+                and parts[3] == "gateway-token"
+                and self.command == "GET"
+            ):
+                try:
+                    token = get_gateway_token(unquote(parts[2]))
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(token)
                 return
 
             if (

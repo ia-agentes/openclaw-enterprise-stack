@@ -56,6 +56,25 @@
         <div id="openClawUpdatePanel" class="update-panel hidden"></div>
       </section>
 
+      <section class="gateway-token-panel" aria-label="Token do Gateway">
+        <div>
+          <h2>Token do Gateway</h2>
+          <p>Revela o token de uma instância por vez para conectar a Control UI com segurança.</p>
+        </div>
+        <form id="gatewayTokenForm" class="gateway-token-form">
+          <label>
+            Instância
+            <select id="gatewayTokenInstance" name="instance"></select>
+          </label>
+          <button id="showGatewayToken" type="button">Mostrar token</button>
+          <button id="copyGatewayToken" type="button" disabled>Copiar token</button>
+        </form>
+        <div id="gatewayTokenPanel" class="gateway-token-result hidden">
+          <div class="token-warning">Token sensível. Revele apenas quando for usar e não compartilhe em conversas públicas.</div>
+          <code id="gatewayTokenValue">••••••••••••••••••••••••</code>
+        </div>
+      </section>
+
       <section class="ai-config" aria-label="Configuração de IA">
         <div>
           <h2>IA por instância</h2>

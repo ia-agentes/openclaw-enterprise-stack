@@ -61,6 +61,12 @@ const pendingAccessList = document.querySelector("#pendingAccessList");
 const startOpenClawUpdate = document.querySelector("#startOpenClawUpdate");
 const refreshOpenClawUpdate = document.querySelector("#refreshOpenClawUpdate");
 const openClawUpdatePanel = document.querySelector("#openClawUpdatePanel");
+const gatewayTokenForm = document.querySelector("#gatewayTokenForm");
+const gatewayTokenInstance = document.querySelector("#gatewayTokenInstance");
+const showGatewayToken = document.querySelector("#showGatewayToken");
+const copyGatewayToken = document.querySelector("#copyGatewayToken");
+const gatewayTokenPanel = document.querySelector("#gatewayTokenPanel");
+const gatewayTokenValue = document.querySelector("#gatewayTokenValue");
 const accessConfigForm = document.querySelector("#accessConfigForm");
 const accessInstance = document.querySelector("#accessInstance");
 const accessChannel = document.querySelector("#accessChannel");
@@ -72,6 +78,7 @@ const refreshChannelAccess = document.querySelector("#refreshChannelAccess");
 const channelAccessPanel = document.querySelector("#channelAccessPanel");
 
 let openClawUpdateTimer = null;
+let revealedGatewayToken = "";
 
 tokenInput.value = state.token;
 
@@ -85,6 +92,10 @@ refreshAll.addEventListener("click", () => loadStatus(null, { source: "refresh" 
 refreshPending.addEventListener("click", () => loadPendingAccess());
 startOpenClawUpdate.addEventListener("click", startOpenClawUpdateJob);
 refreshOpenClawUpdate.addEventListener("click", refreshOpenClawUpdateStatus);
+gatewayTokenForm.addEventListener("submit", (event) => event.preventDefault());
+showGatewayToken.addEventListener("click", revealGatewayToken);
+copyGatewayToken.addEventListener("click", copyRevealedGatewayToken);
+gatewayTokenInstance.addEventListener("change", resetGatewayTokenPanel);
 createInstanceForm.addEventListener("submit", createInstance);
 saveOpenAiKey.addEventListener("click", configureOpenAiKey);
 saveAiModel.addEventListener("click", configureAiModel);
@@ -310,6 +321,7 @@ function render(data) {
 
   cards.innerHTML = instances.map(renderCard).join("");
   rows.innerHTML = instances.map(renderRow).join("");
+  fillGatewayTokenInstances(instances);
   fillAiInstances(instances);
   fillBrowserInstances(instances);
   fillTelegramInstances(instances);
@@ -360,6 +372,17 @@ function fillAiInstances(instances) {
   if (currentModel && Array.from(aiModel.options).some((option) => option.value === currentModel)) {
     aiModel.value = currentModel;
   }
+}
+
+function fillGatewayTokenInstances(instances) {
+  const selected = gatewayTokenInstance.value;
+  gatewayTokenInstance.innerHTML = instances
+    .map((item) => `<option value="${escapeAttribute(item.name)}">${escapeHtml(title(item.name))}</option>`)
+    .join("");
+  if (instances.some((item) => item.name === selected)) {
+    gatewayTokenInstance.value = selected;
+  }
+  if (!revealedGatewayToken) resetGatewayTokenPanel();
 }
 
 function fillWhatsAppInstances(instances) {
@@ -534,6 +557,57 @@ function renderOpenClawUpdatePanel(job = {}) {
   if (job.ok === true) {
     setNotice("Atualização OpenClaw concluída. Vou atualizar os status das instâncias.");
     window.setTimeout(() => loadStatus(null, { source: "refresh" }), 8000);
+  }
+}
+
+function resetGatewayTokenPanel() {
+  revealedGatewayToken = "";
+  copyGatewayToken.disabled = true;
+  gatewayTokenPanel.classList.add("hidden");
+  gatewayTokenValue.textContent = "••••••••••••••••••••••••";
+}
+
+async function revealGatewayToken() {
+  const instance = gatewayTokenInstance.value;
+  if (!instance) {
+    setNotice("Selecione uma instância para mostrar o token.");
+    return;
+  }
+  const confirmed = window.confirm(
+    `Mostrar o token do Gateway de ${title(instance)}?\n\n` +
+      "Esse token permite conectar a Control UI desta instância. Não compartilhe fora de canais seguros.",
+  );
+  if (!confirmed) return;
+
+  showGatewayToken.disabled = true;
+  copyGatewayToken.disabled = true;
+  setNotice(`Buscando token do Gateway de ${title(instance)}...`);
+  try {
+    const data = await api(`/api/instances/${encodeURIComponent(instance)}/gateway-token`);
+    revealedGatewayToken = data.token || "";
+    if (!revealedGatewayToken) throw new Error("Token do Gateway não encontrado.");
+    gatewayTokenPanel.classList.remove("hidden");
+    gatewayTokenValue.textContent = revealedGatewayToken;
+    copyGatewayToken.disabled = false;
+    setNotice(`Token do Gateway de ${title(instance)} revelado.`);
+  } catch (error) {
+    resetGatewayTokenPanel();
+    setNotice(readableError(error));
+  } finally {
+    showGatewayToken.disabled = false;
+  }
+}
+
+async function copyRevealedGatewayToken() {
+  if (!revealedGatewayToken) {
+    setNotice("Mostre o token antes de copiar.");
+    return;
+  }
+  try {
+    await navigator.clipboard.writeText(revealedGatewayToken);
+    setNotice("Token copiado para a área de transferência.");
+  } catch (error) {
+    setNotice("Não consegui copiar automaticamente. Selecione o token revelado e copie manualmente.");
   }
 }
 

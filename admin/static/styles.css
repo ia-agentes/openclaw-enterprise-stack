@@ -191,6 +191,7 @@ h1 {
 .summary > div,
 .ai-config,
 .browser-config,
+.gateway-token-panel,
 .ops-panel,
 .creator,
 .channel-config,
@@ -251,6 +252,15 @@ h1 {
   margin-bottom: 16px;
 }
 
+.gateway-token-panel {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.7fr) minmax(0, 2fr);
+  align-items: start;
+  gap: 14px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
 .ops-panel {
   padding: 14px;
   margin-bottom: 16px;
@@ -297,6 +307,7 @@ h1 {
 
 .ai-config h2,
 .browser-config h2,
+.gateway-token-panel h2,
 .channel-config h2,
 .access-config h2 {
   margin: 0 0 4px;
@@ -304,6 +315,7 @@ h1 {
 }
 
 .browser-config p,
+.gateway-token-panel p,
 .ai-config p {
   margin: 0;
   color: var(--muted);
@@ -370,6 +382,69 @@ h1 {
   background: var(--accent);
   color: var(--accent-contrast);
   font-weight: 700;
+}
+
+.gateway-token-form {
+  display: grid;
+  grid-template-columns: minmax(160px, 0.8fr) repeat(2, auto);
+  gap: 10px;
+  align-items: end;
+}
+
+.gateway-token-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.gateway-token-form select {
+  width: 100%;
+  min-width: 0;
+}
+
+.gateway-token-form button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+}
+
+.gateway-token-form button:disabled {
+  border-color: var(--line);
+  background: #eef1fb;
+  color: var(--muted);
+  cursor: not-allowed;
+}
+
+.gateway-token-result {
+  grid-column: 2;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+  padding-top: 4px;
+}
+
+.token-warning {
+  padding: 10px 12px;
+  border: 1px solid #ffdf70;
+  border-radius: 8px;
+  background: var(--yellow-soft);
+  color: var(--warn);
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.gateway-token-result code {
+  display: block;
+  padding: 12px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  background: #111840;
+  color: #f8fafc;
+  font-size: 13px;
+  overflow-wrap: anywhere;
 }
 
 .checkbox-label {
@@ -1027,6 +1102,9 @@ tr:last-child td {
   .summary,
   .cards,
   .ops-actions,
+  .gateway-token-panel,
+  .gateway-token-form,
+  .gateway-token-result,
   .ai-config,
   .ai-config-form,
   .oauth-panel,
