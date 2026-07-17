@@ -89,6 +89,7 @@ const accessId = document.querySelector("#accessId");
 const accessLabel = document.querySelector("#accessLabel");
 const accessLevel = document.querySelector("#accessLevel");
 const refreshChannelAccess = document.querySelector("#refreshChannelAccess");
+const discoverTelegramGroups = document.querySelector("#discoverTelegramGroups");
 const discoverWhatsAppGroups = document.querySelector("#discoverWhatsAppGroups");
 const accessDiscoveryPanel = document.querySelector("#accessDiscoveryPanel");
 const channelAccessPanel = document.querySelector("#channelAccessPanel");
@@ -142,6 +143,7 @@ whatsappConfigForm.addEventListener("submit", (event) => event.preventDefault())
 whatsappInstance.addEventListener("change", () => refreshWhatsAppPairing());
 accessConfigForm.addEventListener("submit", saveChannelAccess);
 refreshChannelAccess.addEventListener("click", () => loadChannelAccess());
+discoverTelegramGroups.addEventListener("click", discoverTelegramGroupAccess);
 discoverWhatsAppGroups.addEventListener("click", discoverWhatsAppGroupAccess);
 accessInstance.addEventListener("change", () => loadChannelAccess());
 accessChannel.addEventListener("change", syncAccessForm);
@@ -1168,17 +1170,28 @@ function renderTelegramPanel(data) {
       approveTelegramCode();
     });
   });
+  telegramPairingPanel.querySelectorAll("[data-use-telegram-group]").forEach((button) => {
+    button.addEventListener("click", () => {
+      fillAccessFormFromDiscovery({
+        id: button.dataset.useTelegramGroup,
+        label: "Grupo Telegram",
+        channel: "telegram",
+        kind: "group",
+      });
+    });
+  });
 }
 
 function renderTelegramPending(item) {
   const code = item.code || item.pairingCode || item.id || item.requestId || "";
   const user = item.userId || item.senderId || item.fromId || item.chatId || item.user || "";
   const label = code || JSON.stringify(item);
+  const groupId = findTelegramGroupId(item);
   return `
     <div class="pending-item">
       <div>
         <strong>${escapeHtml(code || "Código pendente")}</strong>
-        <span>${escapeHtml(user || "Telegram")}</span>
+        <span>${escapeHtml(groupId || user || "Telegram")}</span>
       </div>
       <code>${escapeHtml(label)}</code>
       <small>${escapeHtml(item.createdAt || item.ts || item.age || "")}</small>
@@ -1187,8 +1200,18 @@ function renderTelegramPending(item) {
           ? `<button type="button" data-telegram-code="${escapeAttribute(code)}">Aprovar</button>`
           : ""
       }
+      ${
+        groupId
+          ? `<button type="button" data-use-telegram-group="${escapeAttribute(groupId)}">Usar como grupo</button>`
+          : ""
+      }
     </div>
   `;
+}
+
+function findTelegramGroupId(value) {
+  const raw = typeof value === "string" ? value : JSON.stringify(value || {});
+  return raw.match(/(?<![A-Za-z0-9])(-100[0-9]{6,20}|-[0-9]{6,20})(?![A-Za-z0-9])/)?.[0] || "";
 }
 
 async function startWhatsAppPairing() {
@@ -1414,6 +1437,8 @@ function syncAccessForm() {
   Array.from(accessLevel.options).forEach((option) => {
     option.disabled = kind === "group" && option.value === "admin";
   });
+  discoverTelegramGroups.hidden = channel !== "telegram";
+  discoverWhatsAppGroups.hidden = channel !== "whatsapp";
 }
 
 async function loadChannelAccess() {
@@ -1443,7 +1468,7 @@ async function discoverWhatsAppGroupAccess() {
   setNotice(`Procurando grupos WhatsApp recentes em ${title(instance)}...`);
   try {
     const data = await api(`/api/instances/${encodeURIComponent(instance)}/channels/whatsapp/groups/discovery`);
-    renderAccessDiscovery(data.items || []);
+    renderAccessDiscovery(data.items || [], "whatsapp");
     setNotice(
       data.items?.length
         ? `Encontrei ${data.items.length} grupo(s) WhatsApp em ${title(instance)}.`
@@ -1458,19 +1483,45 @@ async function discoverWhatsAppGroupAccess() {
   }
 }
 
-function renderAccessDiscovery(items) {
+async function discoverTelegramGroupAccess() {
+  const instance = accessInstance.value;
+  if (!instance) {
+    setNotice("Selecione uma instância para descobrir grupos.");
+    return;
+  }
+  discoverTelegramGroups.disabled = true;
+  setNotice(`Procurando grupos Telegram recentes em ${title(instance)}...`);
+  try {
+    const data = await api(`/api/instances/${encodeURIComponent(instance)}/channels/telegram/groups/discovery`);
+    renderAccessDiscovery(data.items || [], "telegram");
+    setNotice(
+      data.items?.length
+        ? `Encontrei ${data.items.length} grupo(s) Telegram em ${title(instance)}.`
+        : `Nenhum grupo Telegram recente encontrado em ${title(instance)}. Envie uma nova mensagem no grupo, mencione o bot e tente novamente.`,
+    );
+  } catch (error) {
+    accessDiscoveryPanel.classList.remove("hidden");
+    accessDiscoveryPanel.innerHTML = `<div class="empty-state">${escapeHtml(readableError(error))}</div>`;
+    setNotice(readableError(error));
+  } finally {
+    discoverTelegramGroups.disabled = false;
+  }
+}
+
+function renderAccessDiscovery(items, channel = accessChannel.value) {
+  const readableChannel = channel === "telegram" ? "Telegram" : "WhatsApp";
   accessDiscoveryPanel.classList.remove("hidden");
   if (!items.length) {
     accessDiscoveryPanel.innerHTML = `
       <div class="empty-state">
-        Nenhum grupo detectado. Confirme que o número da instância está no grupo, envie uma mensagem no grupo e clique novamente.
+        Nenhum grupo ${escapeHtml(readableChannel)} detectado. Confirme que o canal da instância está no grupo, envie uma mensagem no grupo e clique novamente.
       </div>
     `;
     return;
   }
   accessDiscoveryPanel.innerHTML = `
     <div class="access-discovery-head">
-      <strong>Grupos WhatsApp detectados</strong>
+      <strong>Grupos ${escapeHtml(readableChannel)} detectados</strong>
       <span>Clique em Usar grupo para preencher o identificador automaticamente.</span>
     </div>
     <div class="pending-list">
@@ -1482,7 +1533,7 @@ function renderAccessDiscovery(items) {
       fillAccessFormFromDiscovery({
         id: button.dataset.discoveredGroup,
         label: button.dataset.discoveredLabel,
-        channel: "whatsapp",
+        channel: button.dataset.discoveredChannel,
         kind: "group",
       });
     });
@@ -1490,7 +1541,9 @@ function renderAccessDiscovery(items) {
 }
 
 function renderAccessDiscoveryItem(item) {
-  const label = item.label || "Grupo WhatsApp";
+  const channel = item.channel === "telegram" ? "telegram" : "whatsapp";
+  const readableChannel = channel === "telegram" ? "Telegram" : "WhatsApp";
+  const label = item.label || `Grupo ${readableChannel}`;
   const source = item.source === "pairing" ? "Pareamento" : "Logs recentes";
   return `
     <div class="pending-item">
@@ -1504,6 +1557,7 @@ function renderAccessDiscoveryItem(item) {
         type="button"
         data-discovered-group="${escapeAttribute(item.id)}"
         data-discovered-label="${escapeAttribute(label)}"
+        data-discovered-channel="${escapeAttribute(channel)}"
       >Usar grupo</button>
     </div>
   `;
@@ -1514,7 +1568,7 @@ function fillAccessFormFromDiscovery(item) {
   accessKind.value = item.kind || "group";
   accessLevel.value = "chat";
   accessId.value = item.id || "";
-  accessLabel.value = item.label && item.label !== "Grupo WhatsApp" ? item.label : "";
+  accessLabel.value = item.label && !/^Grupo (WhatsApp|Telegram)$/.test(item.label) ? item.label : "";
   syncAccessForm();
   setNotice("Identificador do grupo preenchido. Revise o nome e clique em Salvar acesso.");
 }

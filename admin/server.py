@@ -44,6 +44,7 @@ WHATSAPP_PAIRING_CODE_RE = re.compile(r"^[A-Za-z0-9_-]{4,32}$")
 PHONE_RE = re.compile(r"^\+?[0-9]{10,15}$")
 TELEGRAM_USER_ID_RE = re.compile(r"^(?:telegram:|tg:)?[0-9]{4,20}$", re.IGNORECASE)
 TELEGRAM_GROUP_ID_RE = re.compile(r"^-?[0-9]{5,30}$")
+TELEGRAM_GROUP_DISCOVERY_RE = re.compile(r"(?<![A-Za-z0-9])(-100[0-9]{6,20}|-[0-9]{6,20})(?![A-Za-z0-9])")
 WHATSAPP_GROUP_ID_RE = re.compile(r"^[A-Za-z0-9._:+-]{5,120}@g\.us$")
 WHATSAPP_GROUP_DISCOVERY_RE = re.compile(r"([0-9][0-9-]{4,80}@g\.us)", re.IGNORECASE)
 BROWSER_PROFILE_RE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
@@ -1197,6 +1198,68 @@ def whatsapp_pairing_status(instance):
     }
 
 
+def discover_telegram_groups(instance):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+
+    candidates = {}
+
+    def add_candidate(group_id, source, detail=""):
+        value = str(group_id or "").strip()
+        if not TELEGRAM_GROUP_ID_RE.match(value):
+            return
+        current = candidates.setdefault(
+            value,
+            {
+                "id": value,
+                "channel": "telegram",
+                "kind": "group",
+                "label": "",
+                "source": source,
+                "detail": "",
+            },
+        )
+        if detail and not current.get("detail"):
+            current["detail"] = detail[:240]
+        if current.get("source") != "pairing" and source == "pairing":
+            current["source"] = source
+
+    try:
+        pairing = telegram_pairing_status(instance)
+        for item in pairing.get("pending", []):
+            raw = json.dumps(item, ensure_ascii=False)
+            for match in TELEGRAM_GROUP_DISCOVERY_RE.findall(raw):
+                add_candidate(match, "pairing", raw)
+    except Exception:
+        pass
+
+    try:
+        logs = docker_logs(f"oces-{instance}", tail=1000, timeout=30)
+        for line in logs.splitlines():
+            lowered = line.lower()
+            if "telegram" not in lowered or ("group" not in lowered and "-100" not in lowered):
+                continue
+            clean = ANSI_RE.sub("", line).replace("\r", "")
+            for match in TELEGRAM_GROUP_DISCOVERY_RE.findall(clean):
+                add_candidate(match, "log", clean)
+    except Exception:
+        pass
+
+    configured = {
+        item["id"]
+        for item in list_channel_access(instance).get("items", [])
+        if item.get("channel") == "telegram" and item.get("kind") == "group"
+    }
+    items = []
+    for group_id, item in candidates.items():
+        item["configured"] = group_id in configured
+        if not item.get("label"):
+            item["label"] = "Grupo Telegram"
+        items.append(item)
+    items.sort(key=lambda item: (item.get("configured", False), item.get("source") != "pairing", item["id"]))
+    return {"ok": True, "instance": instance, "items": items}
+
+
 def discover_whatsapp_groups(instance):
     if instance not in known_instances():
         raise ValueError("unknown instance")
@@ -2083,6 +2146,27 @@ class AdminHandler(SimpleHTTPRequestHandler):
                     self.write_json({"ok": False, "error": str(exc)}, status=500)
                     return
                 self.write_json(status)
+                return
+
+            if (
+                len(parts) == 7
+                and parts[0] == "api"
+                and parts[1] == "instances"
+                and parts[3] == "channels"
+                and parts[4] == "telegram"
+                and parts[5] == "groups"
+                and parts[6] == "discovery"
+                and self.command == "GET"
+            ):
+                try:
+                    groups = discover_telegram_groups(unquote(parts[2]))
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(groups)
                 return
 
             if (
