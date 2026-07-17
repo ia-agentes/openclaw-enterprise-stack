@@ -337,9 +337,10 @@ h1 {
 
 .ai-config-form {
   display: grid;
-  grid-template-columns: minmax(130px, 0.7fr) minmax(240px, 1.3fr) minmax(190px, 1fr) repeat(4, auto);
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
   gap: 10px;
   align-items: end;
+  min-width: 0;
 }
 
 .ai-config-form label {
@@ -361,19 +362,17 @@ h1 {
   background: var(--accent);
   color: var(--accent-contrast);
   font-weight: 700;
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
 }
 
 .browser-config-form {
   display: grid;
-  grid-template-columns:
-    minmax(120px, 0.65fr)
-    minmax(90px, 0.45fr)
-    minmax(230px, 1.2fr)
-    minmax(190px, 0.95fr)
-    minmax(190px, 0.8fr)
-    repeat(3, auto);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
   align-items: end;
+  min-width: 0;
 }
 
 .tickets-db-config-form {
@@ -417,6 +416,9 @@ h1 {
   background: var(--accent);
   color: var(--accent-contrast);
   font-weight: 700;
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
 }
 
 .tickets-db-config-form button {
@@ -686,16 +688,10 @@ h1 {
 
 .access-config-form {
   display: grid;
-  grid-template-columns:
-    minmax(120px, 0.7fr)
-    minmax(120px, 0.7fr)
-    minmax(110px, 0.6fr)
-    minmax(190px, 1.1fr)
-    minmax(160px, 0.9fr)
-    minmax(120px, 0.7fr)
-    repeat(3, minmax(120px, auto));
+  grid-template-columns: repeat(auto-fit, minmax(115px, 1fr));
   gap: 10px;
   align-items: end;
+  min-width: 0;
 }
 
 .access-config-form label {
@@ -719,6 +715,7 @@ h1 {
   font-weight: 700;
   min-width: 0;
   white-space: normal;
+  width: 100%;
 }
 
 .access-discovery-panel {
@@ -768,26 +765,18 @@ h1 {
 
 .channel-config-form {
   display: grid;
-  grid-template-columns: minmax(140px, 0.9fr) minmax(170px, 1fr) repeat(4, auto);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
   align-items: end;
+  min-width: 0;
 }
 
 .telegram-config-form {
-  grid-template-columns:
-    minmax(120px, 0.7fr)
-    minmax(210px, 1.2fr)
-    minmax(150px, 0.9fr)
-    minmax(110px, 0.7fr)
-    repeat(4, auto);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 }
 
 .whatsapp-config-form {
-  grid-template-columns:
-    minmax(120px, 0.7fr)
-    minmax(190px, 1fr)
-    minmax(110px, 0.7fr)
-    repeat(5, auto);
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
 }
 
 .channel-config-form label {
@@ -809,6 +798,9 @@ h1 {
   background: var(--accent);
   color: var(--accent-contrast);
   font-weight: 700;
+  width: 100%;
+  min-width: 0;
+  white-space: normal;
 }
 
 .terminal-panel {

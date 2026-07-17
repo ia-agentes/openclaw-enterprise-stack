@@ -1437,8 +1437,6 @@ function syncAccessForm() {
   Array.from(accessLevel.options).forEach((option) => {
     option.disabled = kind === "group" && option.value === "admin";
   });
-  discoverTelegramGroups.hidden = channel !== "telegram";
-  discoverWhatsAppGroups.hidden = channel !== "whatsapp";
 }
 
 async function loadChannelAccess() {
@@ -1464,6 +1462,10 @@ async function discoverWhatsAppGroupAccess() {
     setNotice("Selecione uma instância para descobrir grupos.");
     return;
   }
+  accessChannel.value = "whatsapp";
+  accessKind.value = "group";
+  accessLevel.value = "chat";
+  syncAccessForm();
   discoverWhatsAppGroups.disabled = true;
   setNotice(`Procurando grupos WhatsApp recentes em ${title(instance)}...`);
   try {
@@ -1489,6 +1491,10 @@ async function discoverTelegramGroupAccess() {
     setNotice("Selecione uma instância para descobrir grupos.");
     return;
   }
+  accessChannel.value = "telegram";
+  accessKind.value = "group";
+  accessLevel.value = "chat";
+  syncAccessForm();
   discoverTelegramGroups.disabled = true;
   setNotice(`Procurando grupos Telegram recentes em ${title(instance)}...`);
   try {
