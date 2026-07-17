@@ -36,6 +36,20 @@ const saveBrowserConfig = document.querySelector("#saveBrowserConfig");
 const refreshBrowserConfig = document.querySelector("#refreshBrowserConfig");
 const validateBrowserConfig = document.querySelector("#validateBrowserConfig");
 const browserConfigPanel = document.querySelector("#browserConfigPanel");
+const ticketsDbConfigForm = document.querySelector("#ticketsDbConfigForm");
+const ticketsDbInstance = document.querySelector("#ticketsDbInstance");
+const ticketsDbType = document.querySelector("#ticketsDbType");
+const ticketsDbHost = document.querySelector("#ticketsDbHost");
+const ticketsDbPort = document.querySelector("#ticketsDbPort");
+const ticketsDbName = document.querySelector("#ticketsDbName");
+const ticketsDbUser = document.querySelector("#ticketsDbUser");
+const ticketsDbPassword = document.querySelector("#ticketsDbPassword");
+const ticketsDbSafeView = document.querySelector("#ticketsDbSafeView");
+const ticketsDbSslMode = document.querySelector("#ticketsDbSslMode");
+const saveTicketsDbConfig = document.querySelector("#saveTicketsDbConfig");
+const refreshTicketsDbConfig = document.querySelector("#refreshTicketsDbConfig");
+const testTicketsDbConfig = document.querySelector("#testTicketsDbConfig");
+const ticketsDbConfigPanel = document.querySelector("#ticketsDbConfigPanel");
 const telegramConfigForm = document.querySelector("#telegramConfigForm");
 const telegramInstance = document.querySelector("#telegramInstance");
 const telegramBotToken = document.querySelector("#telegramBotToken");
@@ -106,6 +120,11 @@ browserConfigForm.addEventListener("submit", saveBrowserSettings);
 refreshBrowserConfig.addEventListener("click", () => loadBrowserConfig());
 validateBrowserConfig.addEventListener("click", validateBrowserSettings);
 browserInstance.addEventListener("change", () => loadBrowserConfig());
+ticketsDbConfigForm.addEventListener("submit", saveTicketsDbSettings);
+refreshTicketsDbConfig.addEventListener("click", () => loadTicketsDbConfig());
+testTicketsDbConfig.addEventListener("click", testTicketsDbSettings);
+ticketsDbInstance.addEventListener("change", () => loadTicketsDbConfig());
+ticketsDbType.addEventListener("change", syncTicketsDbPort);
 saveTelegramConfig.addEventListener("click", saveTelegramSettings);
 refreshTelegramPairings.addEventListener("click", refreshTelegramStatus);
 approveTelegramPairing.addEventListener("click", approveTelegramCode);
@@ -324,6 +343,7 @@ function render(data) {
   fillGatewayTokenInstances(instances);
   fillAiInstances(instances);
   fillBrowserInstances(instances);
+  fillTicketsDbInstances(instances);
   fillTelegramInstances(instances);
   fillWhatsAppInstances(instances);
   fillAccessInstances(instances);
@@ -332,6 +352,9 @@ function render(data) {
   }
   if (browserInstance.value) {
     loadBrowserConfig({ silent: true });
+  }
+  if (ticketsDbInstance.value) {
+    loadTicketsDbConfig({ silent: true });
   }
 
   document.querySelectorAll("[data-refresh-instance]").forEach((button) => {
@@ -402,6 +425,16 @@ function fillBrowserInstances(instances) {
     .join("");
   if (instances.some((item) => item.name === selected)) {
     browserInstance.value = selected;
+  }
+}
+
+function fillTicketsDbInstances(instances) {
+  const selected = ticketsDbInstance.value || (instances.some((item) => item.name === "chamados") ? "chamados" : "");
+  ticketsDbInstance.innerHTML = instances
+    .map((item) => `<option value="${escapeAttribute(item.name)}">${escapeHtml(title(item.name))}</option>`)
+    .join("");
+  if (instances.some((item) => item.name === selected)) {
+    ticketsDbInstance.value = selected;
   }
 }
 
@@ -869,6 +902,148 @@ function renderBrowserProfile(profile) {
       <code>${escapeHtml(profile.userDataDir || profile.cdpUrl || profile.executablePath || "-")}</code>
       ${pill(profile.attachOnly ? "warn" : "ok", profile.attachOnly ? "Sessão existente" : "Gerenciado")}
     </div>
+  `;
+}
+
+function syncTicketsDbPort() {
+  const defaults = {
+    postgres: "5432",
+    mysql: "3306",
+    mariadb: "3306",
+    mssql: "1433",
+  };
+  if (!ticketsDbPort.value.trim()) {
+    ticketsDbPort.value = defaults[ticketsDbType.value] || "";
+  }
+}
+
+async function loadTicketsDbConfig(options = {}) {
+  const instance = ticketsDbInstance.value;
+  if (!instance) {
+    ticketsDbConfigPanel.innerHTML = '<div class="empty-state">Selecione uma instância.</div>';
+    ticketsDbConfigPanel.classList.remove("hidden");
+    return;
+  }
+  refreshTicketsDbConfig.disabled = true;
+  try {
+    const data = await api(`/api/instances/${encodeURIComponent(instance)}/tickets-db`);
+    hydrateTicketsDbForm(data);
+    if (options.silent) return;
+    renderTicketsDbPanel(data);
+  } catch (error) {
+    if (!options.silent) setNotice(readableError(error));
+    ticketsDbConfigPanel.classList.remove("hidden");
+    ticketsDbConfigPanel.innerHTML = `<div class="empty-state">${escapeHtml(readableError(error))}</div>`;
+  } finally {
+    refreshTicketsDbConfig.disabled = false;
+  }
+}
+
+function hydrateTicketsDbForm(data = {}) {
+  if (data.type) ticketsDbType.value = data.type;
+  ticketsDbHost.value = data.host || "";
+  ticketsDbPort.value = data.port || "";
+  ticketsDbName.value = data.database || "";
+  ticketsDbUser.value = data.user || "";
+  ticketsDbPassword.value = "";
+  ticketsDbSafeView.value = data.safeView || "vw_chamados_agent";
+  ticketsDbSslMode.value = data.sslmode || "prefer";
+  syncTicketsDbPort();
+}
+
+function ticketsDbPayload() {
+  return {
+    type: ticketsDbType.value,
+    host: ticketsDbHost.value.trim(),
+    port: ticketsDbPort.value.trim(),
+    database: ticketsDbName.value.trim(),
+    user: ticketsDbUser.value.trim(),
+    password: ticketsDbPassword.value.trim(),
+    safeView: ticketsDbSafeView.value.trim() || "vw_chamados_agent",
+    sslmode: ticketsDbSslMode.value,
+  };
+}
+
+async function saveTicketsDbSettings(event) {
+  event.preventDefault();
+  const instance = ticketsDbInstance.value;
+  const payload = ticketsDbPayload();
+  if (!instance || !payload.host || !payload.database || !payload.user || !payload.safeView) {
+    setNotice("Informe instância, host, banco, usuário de leitura e view segura.");
+    return;
+  }
+  const passwordText = payload.password ? "A senha informada será salva no .env da instância." : "A senha salva, se existir, será preservada.";
+  const message =
+    `Salvar conexão somente leitura de chamados em ${title(instance)}?\n\n` +
+    `${passwordText}\nA Diana deverá consultar apenas a view/tabela segura configurada.`;
+  if (!window.confirm(message)) return;
+
+  saveTicketsDbConfig.disabled = true;
+  setNotice(`Salvando banco de chamados em ${title(instance)}...`);
+  try {
+    const data = await apiJsonPost(`/api/instances/${encodeURIComponent(instance)}/tickets-db`, payload);
+    ticketsDbPassword.value = "";
+    hydrateTicketsDbForm(data);
+    renderTicketsDbPanel(data);
+    setNotice(`Banco de chamados salvo em ${title(instance)}.`);
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    saveTicketsDbConfig.disabled = false;
+  }
+}
+
+async function testTicketsDbSettings() {
+  const instance = ticketsDbInstance.value;
+  if (!instance) {
+    setNotice("Selecione uma instância.");
+    return;
+  }
+  testTicketsDbConfig.disabled = true;
+  setNotice(`Testando alcance do banco de chamados em ${title(instance)}...`);
+  try {
+    const data = await apiPost(`/api/instances/${encodeURIComponent(instance)}/tickets-db/test`);
+    renderTicketsDbPanel(data);
+    setNotice(
+      data.reachable
+        ? `Banco de chamados alcançável em ${title(instance)}.`
+        : `Banco de chamados configurado, mas host/porta não responderam em ${title(instance)}.`,
+    );
+  } catch (error) {
+    setNotice(readableError(error));
+  } finally {
+    testTicketsDbConfig.disabled = false;
+  }
+}
+
+function renderTicketsDbPanel(data = {}) {
+  const status = data.reachable === true ? "Alcançável" : data.configured ? "Configurado" : "Pendente";
+  const statusClass = data.reachable === true ? "ok" : data.configured ? "warn" : "idle";
+  const password = data.passwordSaved ? "senha salva" : "sem senha salva";
+  ticketsDbConfigPanel.classList.remove("hidden");
+  ticketsDbConfigPanel.innerHTML = `
+    <div class="oauth-status">
+      ${pill(statusClass, status)}
+      <span>${escapeHtml(data.mode || "read-only")}</span>
+      <span>${escapeHtml(password)}</span>
+      ${data.latencyMs !== null && data.latencyMs !== undefined ? `<span>${escapeHtml(data.latencyMs)} ms</span>` : ""}
+    </div>
+    <div class="browser-profile-list">
+      <div class="browser-profile">
+        <div><span>Tipo</span><strong>${escapeHtml(data.type || "-")}</strong></div>
+        <div><span>Host</span><code>${escapeHtml(data.host || "-")}</code></div>
+        <div><span>Porta</span><code>${escapeHtml(data.port || "-")}</code></div>
+        <div><span>Banco</span><code>${escapeHtml(data.database || "-")}</code></div>
+        <div><span>Usuário</span><code>${escapeHtml(data.user || "-")}</code></div>
+        <div><span>View segura</span><code>${escapeHtml(data.safeView || "-")}</code></div>
+        <div><span>SSL</span><code>${escapeHtml(data.sslmode || "-")}</code></div>
+      </div>
+    </div>
+    ${
+      data.error
+        ? `<div class="delivery-alert"><strong>Alerta de alcance</strong><span>${escapeHtml(data.error)}</span></div>`
+        : '<div class="empty-state">Fase 1 pronta: a próxima etapa é mapear a view segura e criar consultas somente leitura.</div>'
+    }
   `;
 }
 

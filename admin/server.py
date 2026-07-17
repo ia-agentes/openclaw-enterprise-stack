@@ -46,6 +46,9 @@ TELEGRAM_USER_ID_RE = re.compile(r"^(?:telegram:|tg:)?[0-9]{4,20}$", re.IGNORECA
 TELEGRAM_GROUP_ID_RE = re.compile(r"^-?[0-9]{5,30}$")
 WHATSAPP_GROUP_ID_RE = re.compile(r"^[A-Za-z0-9._:+-]{5,120}@g\.us$")
 BROWSER_PROFILE_RE = re.compile(r"^[a-z][a-z0-9_-]{1,31}$")
+DB_HOST_RE = re.compile(r"^[A-Za-z0-9._:-]{1,253}$")
+DB_NAME_RE = re.compile(r"^[A-Za-z0-9_.-]{1,128}$")
+DB_VIEW_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_.$-]{0,127}$")
 ANSI_RE = re.compile(r"\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])")
 WHATSAPP_TIMELOCK_RE = re.compile(
     r"WhatsApp reachout timelock is active;.*?type=([A-Z0-9_]+).*?until=([0-9T:.\-]+Z)",
@@ -63,6 +66,13 @@ OPENAI_MODELS = {
     "openai/gpt-5-nano",
     "openai/chat-latest",
 }
+TICKETS_DB_TYPES = {
+    "postgres": 5432,
+    "mysql": 3306,
+    "mssql": 1433,
+    "mariadb": 3306,
+}
+TICKETS_SSL_MODES = {"prefer", "require", "disable", "verify-ca", "verify-full"}
 
 
 class UnixHTTPConnection(http.client.HTTPConnection):
@@ -296,6 +306,129 @@ def get_gateway_token(instance):
         "domain": cfg.get("domain", ""),
         "token": token,
         "source": source,
+    }
+
+
+def tickets_db_env_path(instance):
+    return ROOT / "instances" / instance / ".env"
+
+
+def tickets_db_summary(instance):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+
+    env = read_env(tickets_db_env_path(instance))
+    db_type = env.get("TICKETS_DB_TYPE", "").strip()
+    host = env.get("TICKETS_DB_HOST", "").strip()
+    port = env.get("TICKETS_DB_PORT", "").strip()
+    database = env.get("TICKETS_DB_NAME", "").strip()
+    user = env.get("TICKETS_DB_USER", "").strip()
+    view = env.get("TICKETS_DB_SAFE_VIEW", "").strip()
+    sslmode = env.get("TICKETS_DB_SSLMODE", "").strip() or "prefer"
+    password_saved = bool(env.get("TICKETS_DB_PASSWORD", ""))
+    configured = bool(db_type and host and port and database and user and view)
+    return {
+        "ok": True,
+        "instance": instance,
+        "configured": configured,
+        "type": db_type,
+        "host": host,
+        "port": port,
+        "database": database,
+        "user": user,
+        "safeView": view,
+        "sslmode": sslmode,
+        "passwordSaved": password_saved,
+        "mode": "read-only",
+    }
+
+
+def normalize_tickets_db_payload(payload):
+    if not isinstance(payload, dict):
+        raise ValueError("payload invalido")
+
+    db_type = str(payload.get("type", "")).strip().lower()
+    host = str(payload.get("host", "")).strip()
+    raw_port = str(payload.get("port", "")).strip()
+    database = str(payload.get("database", "")).strip()
+    user = str(payload.get("user", "")).strip()
+    password = str(payload.get("password", "")).strip()
+    safe_view = str(payload.get("safeView", "")).strip() or "vw_chamados_agent"
+    sslmode = str(payload.get("sslmode", "prefer")).strip().lower() or "prefer"
+
+    if db_type not in TICKETS_DB_TYPES:
+        raise ValueError("tipo de banco nao permitido")
+    if not DB_HOST_RE.match(host) or host in {".", "-", "_"}:
+        raise ValueError("host do banco invalido")
+    if raw_port:
+        try:
+            port = int(raw_port)
+        except ValueError as exc:
+            raise ValueError("porta do banco invalida") from exc
+    else:
+        port = TICKETS_DB_TYPES[db_type]
+    if port < 1 or port > 65535:
+        raise ValueError("porta do banco invalida")
+    if not DB_NAME_RE.match(database):
+        raise ValueError("nome do banco invalido")
+    if not user or len(user) > 128 or any(char.isspace() for char in user):
+        raise ValueError("usuario do banco invalido")
+    if safe_view and not DB_VIEW_RE.match(safe_view):
+        raise ValueError("view/tabela segura invalida")
+    if sslmode not in TICKETS_SSL_MODES:
+        raise ValueError("modo SSL invalido")
+
+    return {
+        "type": db_type,
+        "host": host,
+        "port": str(port),
+        "database": database,
+        "user": user,
+        "password": password,
+        "safeView": safe_view,
+        "sslmode": sslmode,
+    }
+
+
+def save_tickets_db_config(instance, payload):
+    if instance not in known_instances():
+        raise ValueError("unknown instance")
+    config = normalize_tickets_db_payload(payload)
+    env_path = tickets_db_env_path(instance)
+    with CREATE_LOCK:
+        write_env_value(env_path, "TICKETS_DB_TYPE", config["type"])
+        write_env_value(env_path, "TICKETS_DB_HOST", config["host"])
+        write_env_value(env_path, "TICKETS_DB_PORT", config["port"])
+        write_env_value(env_path, "TICKETS_DB_NAME", config["database"])
+        write_env_value(env_path, "TICKETS_DB_USER", config["user"])
+        if config["password"]:
+            write_env_value(env_path, "TICKETS_DB_PASSWORD", config["password"])
+        write_env_value(env_path, "TICKETS_DB_SAFE_VIEW", config["safeView"])
+        write_env_value(env_path, "TICKETS_DB_SSLMODE", config["sslmode"])
+    return tickets_db_summary(instance)
+
+
+def test_tickets_db_reachability(instance):
+    summary = tickets_db_summary(instance)
+    if not summary["configured"]:
+        raise ValueError("configure host, porta, banco, usuario e view segura antes de testar")
+    started = time.time()
+    try:
+        with socket.create_connection((summary["host"], int(summary["port"])), timeout=8):
+            pass
+    except OSError as exc:
+        return {
+            **summary,
+            "reachable": False,
+            "latencyMs": None,
+            "error": str(exc),
+        }
+    latency_ms = int((time.time() - started) * 1000)
+    return {
+        **summary,
+        "reachable": True,
+        "latencyMs": latency_ms,
+        "error": "",
     }
 
 
@@ -1767,6 +1900,24 @@ class AdminHandler(SimpleHTTPRequestHandler):
                 return
 
             if (
+                len(parts) == 4
+                and parts[0] == "api"
+                and parts[1] == "instances"
+                and parts[3] == "tickets-db"
+                and self.command == "GET"
+            ):
+                try:
+                    config = tickets_db_summary(unquote(parts[2]))
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(config)
+                return
+
+            if (
                 len(parts) == 6
                 and parts[0] == "api"
                 and parts[1] == "instances"
@@ -1958,9 +2109,35 @@ class AdminHandler(SimpleHTTPRequestHandler):
                 self.write_json(saved)
                 return
 
+            if len(parts) == 4 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "tickets-db":
+                try:
+                    length = int(self.headers.get("Content-Length", "0"))
+                    payload = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                    saved = save_tickets_db_config(unquote(parts[2]), payload)
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(saved)
+                return
+
             if len(parts) == 5 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "browser" and parts[4] == "validate":
                 try:
                     data = validate_browser_config(unquote(parts[2]))
+                except ValueError as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=400)
+                    return
+                except Exception as exc:
+                    self.write_json({"ok": False, "error": str(exc)}, status=500)
+                    return
+                self.write_json(data)
+                return
+
+            if len(parts) == 5 and parts[0] == "api" and parts[1] == "instances" and parts[3] == "tickets-db" and parts[4] == "test":
+                try:
+                    data = test_tickets_db_reachability(unquote(parts[2]))
                 except ValueError as exc:
                     self.write_json({"ok": False, "error": str(exc)}, status=400)
                     return

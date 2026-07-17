@@ -145,6 +145,66 @@
         <div id="browserConfigPanel" class="browser-panel hidden"></div>
       </section>
 
+      <section class="tickets-db-config" aria-label="Banco de Chamados">
+        <div>
+          <h2>Banco de Chamados</h2>
+          <p>Prepara a Diana para consultar chamados por uma conexão somente leitura e uma view segura.</p>
+        </div>
+        <form id="ticketsDbConfigForm" class="tickets-db-config-form">
+          <label>
+            Instância
+            <select id="ticketsDbInstance" name="instance"></select>
+          </label>
+          <label>
+            Tipo
+            <select id="ticketsDbType" name="type">
+              <option value="postgres">PostgreSQL</option>
+              <option value="mysql">MySQL</option>
+              <option value="mariadb">MariaDB</option>
+              <option value="mssql">SQL Server</option>
+            </select>
+          </label>
+          <label>
+            Host
+            <input id="ticketsDbHost" name="host" type="text" autocomplete="off" placeholder="db.empresa.local" />
+          </label>
+          <label>
+            Porta
+            <input id="ticketsDbPort" name="port" type="number" min="1" max="65535" placeholder="5432" />
+          </label>
+          <label>
+            Banco
+            <input id="ticketsDbName" name="database" type="text" autocomplete="off" placeholder="chamados" />
+          </label>
+          <label>
+            Usuário leitura
+            <input id="ticketsDbUser" name="user" type="text" autocomplete="off" placeholder="openclaw_ro" />
+          </label>
+          <label>
+            Senha
+            <input id="ticketsDbPassword" name="password" type="password" autocomplete="off" placeholder="não exibida depois de salva" />
+          </label>
+          <label>
+            View segura
+            <input id="ticketsDbSafeView" name="safeView" type="text" autocomplete="off" value="vw_chamados_agent" />
+          </label>
+          <label>
+            SSL
+            <select id="ticketsDbSslMode" name="sslmode">
+              <option value="prefer">prefer</option>
+              <option value="require">require</option>
+              <option value="disable">disable</option>
+              <option value="verify-ca">verify-ca</option>
+              <option value="verify-full">verify-full</option>
+            </select>
+          </label>
+          <button id="saveTicketsDbConfig" type="submit">Salvar conexão</button>
+          <button id="refreshTicketsDbConfig" type="button">Ver configuração</button>
+          <button id="testTicketsDbConfig" type="button">Testar alcance</button>
+        </form>
+        <div id="ticketsDbConfigPanel" class="tickets-db-panel hidden"></div>
+      </section>
+
       <section class="creator" aria-label="Criar instância">
         <div>
           <h2>Nova instância</h2>

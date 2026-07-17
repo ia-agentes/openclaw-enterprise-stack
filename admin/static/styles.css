@@ -191,6 +191,7 @@ h1 {
 .summary > div,
 .ai-config,
 .browser-config,
+.tickets-db-config,
 .gateway-token-panel,
 .ops-panel,
 .creator,
@@ -244,6 +245,15 @@ h1 {
 }
 
 .browser-config {
+  display: grid;
+  grid-template-columns: minmax(210px, 0.7fr) minmax(0, 2fr);
+  align-items: start;
+  gap: 14px;
+  padding: 14px;
+  margin-bottom: 16px;
+}
+
+.tickets-db-config {
   display: grid;
   grid-template-columns: minmax(210px, 0.7fr) minmax(0, 2fr);
   align-items: start;
@@ -307,6 +317,7 @@ h1 {
 
 .ai-config h2,
 .browser-config h2,
+.tickets-db-config h2,
 .gateway-token-panel h2,
 .channel-config h2,
 .access-config h2 {
@@ -315,6 +326,7 @@ h1 {
 }
 
 .browser-config p,
+.tickets-db-config p,
 .gateway-token-panel p,
 .ai-config p {
   margin: 0;
@@ -363,7 +375,32 @@ h1 {
   align-items: end;
 }
 
+.tickets-db-config-form {
+  display: grid;
+  grid-template-columns:
+    minmax(120px, 0.65fr)
+    minmax(120px, 0.55fr)
+    minmax(190px, 1fr)
+    minmax(90px, 0.45fr)
+    minmax(140px, 0.7fr)
+    minmax(150px, 0.7fr)
+    minmax(180px, 0.8fr)
+    minmax(170px, 0.8fr)
+    minmax(110px, 0.55fr)
+    repeat(3, auto);
+  gap: 10px;
+  align-items: end;
+}
+
 .browser-config-form label {
+  display: grid;
+  gap: 5px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 650;
+}
+
+.tickets-db-config-form label {
   display: grid;
   gap: 5px;
   color: var(--muted);
@@ -377,7 +414,20 @@ h1 {
   min-width: 0;
 }
 
+.tickets-db-config-form input,
+.tickets-db-config-form select {
+  width: 100%;
+  min-width: 0;
+}
+
 .browser-config-form button {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-contrast);
+  font-weight: 700;
+}
+
+.tickets-db-config-form button {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-contrast);
@@ -472,6 +522,13 @@ h1 {
   gap: 8px;
   min-width: 0;
   padding-top: 4px;
+}
+
+.tickets-db-panel {
+  grid-column: 2;
+  display: grid;
+  gap: 8px;
+  min-width: 0;
 }
 
 .browser-profile-list {
@@ -1112,6 +1169,9 @@ tr:last-child td {
   .browser-config-form,
   .browser-panel,
   .browser-profile,
+  .tickets-db-config,
+  .tickets-db-config-form,
+  .tickets-db-panel,
   .device-code-card,
   .creator,
   .creator-form,
