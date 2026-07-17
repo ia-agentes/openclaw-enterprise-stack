@@ -89,6 +89,8 @@ const accessId = document.querySelector("#accessId");
 const accessLabel = document.querySelector("#accessLabel");
 const accessLevel = document.querySelector("#accessLevel");
 const refreshChannelAccess = document.querySelector("#refreshChannelAccess");
+const discoverWhatsAppGroups = document.querySelector("#discoverWhatsAppGroups");
+const accessDiscoveryPanel = document.querySelector("#accessDiscoveryPanel");
 const channelAccessPanel = document.querySelector("#channelAccessPanel");
 
 let openClawUpdateTimer = null;
@@ -140,6 +142,7 @@ whatsappConfigForm.addEventListener("submit", (event) => event.preventDefault())
 whatsappInstance.addEventListener("change", () => refreshWhatsAppPairing());
 accessConfigForm.addEventListener("submit", saveChannelAccess);
 refreshChannelAccess.addEventListener("click", () => loadChannelAccess());
+discoverWhatsAppGroups.addEventListener("click", discoverWhatsAppGroupAccess);
 accessInstance.addEventListener("change", () => loadChannelAccess());
 accessChannel.addEventListener("change", syncAccessForm);
 accessKind.addEventListener("change", syncAccessForm);
@@ -1332,6 +1335,16 @@ function renderWhatsAppPanel(data) {
       approveWhatsAppCode();
     });
   });
+  whatsappLoginPanel.querySelectorAll("[data-use-whatsapp-group]").forEach((button) => {
+    button.addEventListener("click", () => {
+      fillAccessFormFromDiscovery({
+        id: button.dataset.useWhatsappGroup,
+        label: "",
+        channel: "whatsapp",
+        kind: "group",
+      });
+    });
+  });
 }
 
 function renderWhatsAppDeliveryAlert(alert) {
@@ -1354,12 +1367,13 @@ function renderWhatsAppDeliveryAlert(alert) {
 function renderWhatsAppPending(item) {
   const code = item.code || item.pairingCode || item.id || item.requestId || "";
   const phone = item.phone || item.phoneNumber || item.sender || item.senderId || item.from || "";
+  const groupId = findWhatsAppGroupId(item);
   const label = code || JSON.stringify(item);
   return `
     <div class="pending-item">
       <div>
         <strong>${escapeHtml(code || "Código pendente")}</strong>
-        <span>${escapeHtml(phone || "WhatsApp")}</span>
+        <span>${escapeHtml(groupId || phone || "WhatsApp")}</span>
       </div>
       <code>${escapeHtml(label)}</code>
       <small>${escapeHtml(item.createdAt || item.ts || item.age || "")}</small>
@@ -1368,8 +1382,18 @@ function renderWhatsAppPending(item) {
           ? `<button type="button" data-whatsapp-code="${escapeAttribute(code)}">Aprovar</button>`
           : ""
       }
+      ${
+        groupId
+          ? `<button type="button" data-use-whatsapp-group="${escapeAttribute(groupId)}">Usar como grupo</button>`
+          : ""
+      }
     </div>
   `;
+}
+
+function findWhatsAppGroupId(value) {
+  const raw = typeof value === "string" ? value : JSON.stringify(value || {});
+  return raw.match(/[0-9][0-9-]{4,80}@g\.us/i)?.[0] || "";
 }
 
 function syncAccessForm() {
@@ -1407,6 +1431,92 @@ async function loadChannelAccess() {
   } finally {
     refreshChannelAccess.disabled = false;
   }
+}
+
+async function discoverWhatsAppGroupAccess() {
+  const instance = accessInstance.value;
+  if (!instance) {
+    setNotice("Selecione uma instância para descobrir grupos.");
+    return;
+  }
+  discoverWhatsAppGroups.disabled = true;
+  setNotice(`Procurando grupos WhatsApp recentes em ${title(instance)}...`);
+  try {
+    const data = await api(`/api/instances/${encodeURIComponent(instance)}/channels/whatsapp/groups/discovery`);
+    renderAccessDiscovery(data.items || []);
+    setNotice(
+      data.items?.length
+        ? `Encontrei ${data.items.length} grupo(s) WhatsApp em ${title(instance)}.`
+        : `Nenhum grupo WhatsApp recente encontrado em ${title(instance)}. Envie uma nova mensagem no grupo e tente novamente.`,
+    );
+  } catch (error) {
+    accessDiscoveryPanel.classList.remove("hidden");
+    accessDiscoveryPanel.innerHTML = `<div class="empty-state">${escapeHtml(readableError(error))}</div>`;
+    setNotice(readableError(error));
+  } finally {
+    discoverWhatsAppGroups.disabled = false;
+  }
+}
+
+function renderAccessDiscovery(items) {
+  accessDiscoveryPanel.classList.remove("hidden");
+  if (!items.length) {
+    accessDiscoveryPanel.innerHTML = `
+      <div class="empty-state">
+        Nenhum grupo detectado. Confirme que o número da instância está no grupo, envie uma mensagem no grupo e clique novamente.
+      </div>
+    `;
+    return;
+  }
+  accessDiscoveryPanel.innerHTML = `
+    <div class="access-discovery-head">
+      <strong>Grupos WhatsApp detectados</strong>
+      <span>Clique em Usar grupo para preencher o identificador automaticamente.</span>
+    </div>
+    <div class="pending-list">
+      ${items.map(renderAccessDiscoveryItem).join("")}
+    </div>
+  `;
+  accessDiscoveryPanel.querySelectorAll("[data-discovered-group]").forEach((button) => {
+    button.addEventListener("click", () => {
+      fillAccessFormFromDiscovery({
+        id: button.dataset.discoveredGroup,
+        label: button.dataset.discoveredLabel,
+        channel: "whatsapp",
+        kind: "group",
+      });
+    });
+  });
+}
+
+function renderAccessDiscoveryItem(item) {
+  const label = item.label || "Grupo WhatsApp";
+  const source = item.source === "pairing" ? "Pareamento" : "Logs recentes";
+  return `
+    <div class="pending-item">
+      <div>
+        <strong>${escapeHtml(label)}</strong>
+        <span>${escapeHtml(item.configured ? "Já liberado" : source)}</span>
+      </div>
+      <code>${escapeHtml(item.id)}</code>
+      <small>${escapeHtml(item.detail || "")}</small>
+      <button
+        type="button"
+        data-discovered-group="${escapeAttribute(item.id)}"
+        data-discovered-label="${escapeAttribute(label)}"
+      >Usar grupo</button>
+    </div>
+  `;
+}
+
+function fillAccessFormFromDiscovery(item) {
+  accessChannel.value = item.channel || "whatsapp";
+  accessKind.value = item.kind || "group";
+  accessLevel.value = "chat";
+  accessId.value = item.id || "";
+  accessLabel.value = item.label && item.label !== "Grupo WhatsApp" ? item.label : "";
+  syncAccessForm();
+  setNotice("Identificador do grupo preenchido. Revise o nome e clique em Salvar acesso.");
 }
 
 async function saveChannelAccess(event) {

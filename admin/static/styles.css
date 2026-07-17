@@ -693,7 +693,7 @@ h1 {
     minmax(190px, 1.1fr)
     minmax(160px, 0.9fr)
     minmax(120px, 0.7fr)
-    repeat(2, auto);
+    repeat(3, minmax(120px, auto));
   gap: 10px;
   align-items: end;
 }
@@ -717,6 +717,28 @@ h1 {
   background: var(--accent);
   color: var(--accent-contrast);
   font-weight: 700;
+  min-width: 0;
+  white-space: normal;
+}
+
+.access-discovery-panel {
+  grid-column: 2;
+  display: grid;
+  gap: 10px;
+  min-width: 0;
+}
+
+.access-discovery-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.access-discovery-head strong {
+  color: var(--navy);
 }
 
 .access-panel {
