@@ -1537,15 +1537,20 @@ def browser_config_summary(config):
             {
                 "name": name,
                 "driver": profile.get("driver", ""),
+                "headless": bool(profile.get("headless")),
                 "attachOnly": bool(profile.get("attachOnly")),
                 "userDataDir": profile.get("userDataDir", ""),
                 "cdpUrl": profile.get("cdpUrl", ""),
+                "cdpPort": profile.get("cdpPort", ""),
                 "executablePath": profile.get("executablePath", ""),
                 "color": profile.get("color", ""),
             }
         )
     return {
         "enabled": bool(browser.get("enabled")),
+        "defaultProfile": browser.get("defaultProfile", ""),
+        "headless": bool(browser.get("headless")),
+        "noSandbox": bool(browser.get("noSandbox")),
         "profiles": items,
         "raw": browser if isinstance(browser, dict) else {},
     }
@@ -1563,14 +1568,14 @@ def get_browser_config(instance):
 def normalize_browser_payload(payload):
     if not isinstance(payload, dict):
         raise ValueError("payload invalido")
-    profile_name = str(payload.get("profileName") or "edge").strip().lower()
+    profile_name = str(payload.get("profileName") or "openclaw").strip().lower()
     if not BROWSER_PROFILE_RE.match(profile_name):
         raise ValueError("perfil precisa usar letras minusculas, numeros, hifen ou underline")
-    driver = str(payload.get("driver") or "existing-session").strip()
-    if driver != "existing-session":
-        raise ValueError("este painel gerencia apenas o modo existing-session")
+    driver = str(payload.get("driver") or "openclaw").strip()
+    if driver not in ("openclaw", "existing-session"):
+        raise ValueError("modo do navegador precisa ser openclaw ou existing-session")
     user_data_dir = str(payload.get("userDataDir") or "").strip()
-    if not user_data_dir:
+    if driver == "existing-session" and not user_data_dir:
         raise ValueError("informe o diretorio do perfil do navegador")
     if "\x00" in user_data_dir or "\n" in user_data_dir or "\r" in user_data_dir:
         raise ValueError("diretorio do perfil invalido")
@@ -1584,16 +1589,44 @@ def normalize_browser_payload(payload):
         raise ValueError("cor precisa estar no formato #RRGGBB")
     profile = {
         "driver": driver,
-        "attachOnly": bool(payload.get("attachOnly", True)),
-        "userDataDir": user_data_dir,
         "color": color,
     }
-    if cdp_url:
+    if driver == "openclaw":
+        profile["cdpPort"] = 18800
+        profile["headless"] = True
+        profile["attachOnly"] = False
+    else:
+        profile["attachOnly"] = bool(payload.get("attachOnly", True))
+    if user_data_dir:
+        profile["userDataDir"] = user_data_dir
+    if cdp_url and driver == "existing-session":
         profile["cdpUrl"] = cdp_url
     return {
         "profileName": profile_name,
         "profile": profile,
     }
+
+
+def ensure_managed_browser_defaults(browser):
+    browser["enabled"] = True
+    browser.setdefault("evaluateEnabled", True)
+    browser["defaultProfile"] = "openclaw"
+    browser["headless"] = True
+    browser["noSandbox"] = True
+    browser.setdefault("localLaunchTimeoutMs", 30000)
+    browser.setdefault("localCdpReadyTimeoutMs", 15000)
+    browser.setdefault("actionTimeoutMs", 90000)
+    extra_args = browser.get("extraArgs")
+    if not isinstance(extra_args, list):
+        extra_args = []
+    if "--disable-dev-shm-usage" not in extra_args:
+        extra_args.append("--disable-dev-shm-usage")
+    browser["extraArgs"] = extra_args
+    profiles = browser.setdefault("profiles", {})
+    if isinstance(profiles, dict):
+        openclaw_profile = profiles.setdefault("openclaw", {})
+        if isinstance(openclaw_profile, dict) and openclaw_profile.get("driver") == "openclaw":
+            openclaw_profile["cdpPort"] = 18800
 
 
 def save_browser_config(instance, payload):
@@ -1610,7 +1643,7 @@ def save_browser_config(instance, payload):
         if not isinstance(browser, dict):
             config["browser"] = {}
             browser = config["browser"]
-        browser["enabled"] = True
+        ensure_managed_browser_defaults(browser)
         profiles = browser.setdefault("profiles", {})
         if not isinstance(profiles, dict):
             browser["profiles"] = {}

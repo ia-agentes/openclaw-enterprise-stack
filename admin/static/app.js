@@ -808,37 +808,46 @@ async function loadBrowserConfig(options = {}) {
 
 function hydrateBrowserForm(browser = {}) {
   const edge =
-    (browser.profiles || []).find((profile) => profile.name === "edge") ||
+    (browser.profiles || []).find((profile) => profile.name === "openclaw") ||
     (browser.profiles || [])[0];
-  if (!edge) return;
-  browserProfileName.value = edge.name || "edge";
-  browserUserDataDir.value = edge.userDataDir || "~/.config/microsoft-edge";
-  browserCdpUrl.value = edge.cdpUrl || "http://127.0.0.1:9222";
-  browserAttachOnly.checked = edge.attachOnly !== false;
+  if (!edge) {
+    browserProfileName.value = "openclaw";
+    browserUserDataDir.value = "";
+    browserCdpUrl.value = "";
+    browserAttachOnly.checked = false;
+    return;
+  }
+  browserProfileName.value = edge.name || "openclaw";
+  browserUserDataDir.value = edge.userDataDir || "";
+  browserCdpUrl.value = edge.cdpUrl || "";
+  browserAttachOnly.checked = edge.driver === "existing-session" || edge.attachOnly === true;
 }
 
 async function saveBrowserSettings(event) {
   event.preventDefault();
   const instance = browserInstance.value;
+  const useExistingSession = browserAttachOnly.checked;
   const payload = {
-    profileName: browserProfileName.value.trim() || "edge",
-    driver: "existing-session",
-    attachOnly: browserAttachOnly.checked,
+    profileName: browserProfileName.value.trim() || "openclaw",
+    driver: useExistingSession ? "existing-session" : "openclaw",
+    attachOnly: useExistingSession,
     userDataDir: browserUserDataDir.value.trim(),
     cdpUrl: browserCdpUrl.value.trim(),
-    color: "#0078D7",
+    color: useExistingSession ? "#0078D7" : "#FFC400",
   };
   if (!instance) {
     setNotice("Selecione uma instância.");
     return;
   }
-  if (!payload.userDataDir) {
+  if (useExistingSession && !payload.userDataDir && !payload.cdpUrl) {
     setNotice("Informe o diretório do perfil do navegador.");
     return;
   }
   const message =
     `Salvar perfil ${payload.profileName} em ${title(instance)} e reiniciar a instância?\n\n` +
-    "O OpenClaw passará a tentar usar uma sessão existente do Edge nesse diretório.";
+    (useExistingSession
+      ? "O OpenClaw passará a tentar usar uma sessão externa já aberta."
+      : "O OpenClaw usará um Chromium gerenciado no container, com no-sandbox e login persistente no volume da instância.");
   if (!window.confirm(message)) return;
 
   saveBrowserConfig.disabled = true;
@@ -884,6 +893,9 @@ function renderBrowserPanel(data = {}) {
   browserConfigPanel.innerHTML = `
     <div class="oauth-status">
       <strong>${browser.enabled ? "Browser habilitado" : "Browser desabilitado"}</strong>
+      ${browser.defaultProfile ? `<span>Padrão: ${escapeHtml(browser.defaultProfile)}</span>` : ""}
+      ${browser.noSandbox ? "<span>no-sandbox ativo</span>" : ""}
+      ${browser.headless ? "<span>headless</span>" : ""}
       <span>${profiles.length ? `${profiles.length} perfil(is)` : "Nenhum perfil configurado"}</span>
       ${data.validated === true ? "<span>CLI validada</span>" : ""}
     </div>
@@ -902,10 +914,11 @@ function renderBrowserProfile(profile) {
     <div class="browser-profile">
       <div>
         <strong>${escapeHtml(profile.name || "perfil")}</strong>
-        <span>${escapeHtml(profile.driver || "-")}</span>
+        <span>${escapeHtml(profile.driver || "openclaw")}</span>
       </div>
-      <code>${escapeHtml(profile.userDataDir || profile.cdpUrl || profile.executablePath || "-")}</code>
+      <code>${escapeHtml(profile.userDataDir || profile.cdpUrl || (profile.cdpPort ? `CDP ${profile.cdpPort}` : "") || profile.executablePath || "-")}</code>
       ${pill(profile.attachOnly ? "warn" : "ok", profile.attachOnly ? "Sessão existente" : "Gerenciado")}
+      ${profile.headless ? pill("ok", "Headless") : ""}
     </div>
   `;
 }

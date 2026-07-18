@@ -103,6 +103,42 @@ def write_text_lf(path, content):
         handle.write(content)
 
 
+def ensure_browser_config(config):
+    browser = config.setdefault("browser", {})
+    if not isinstance(browser, dict):
+        config["browser"] = {}
+        browser = config["browser"]
+
+    browser["enabled"] = True
+    browser.setdefault("evaluateEnabled", True)
+    browser["defaultProfile"] = "openclaw"
+    browser["headless"] = True
+    browser["noSandbox"] = True
+    browser.setdefault("localLaunchTimeoutMs", 30000)
+    browser.setdefault("localCdpReadyTimeoutMs", 15000)
+    browser.setdefault("actionTimeoutMs", 90000)
+
+    extra_args = browser.get("extraArgs")
+    if not isinstance(extra_args, list):
+        extra_args = []
+    if "--disable-dev-shm-usage" not in extra_args:
+        extra_args.append("--disable-dev-shm-usage")
+    browser["extraArgs"] = extra_args
+
+    profiles = browser.setdefault("profiles", {})
+    if not isinstance(profiles, dict):
+        browser["profiles"] = {}
+        profiles = browser["profiles"]
+    openclaw_profile = profiles.setdefault("openclaw", {})
+    if not isinstance(openclaw_profile, dict):
+        profiles["openclaw"] = {}
+        openclaw_profile = profiles["openclaw"]
+    openclaw_profile["driver"] = "openclaw"
+    openclaw_profile["cdpPort"] = 18800
+    openclaw_profile["headless"] = True
+    openclaw_profile.setdefault("color", "#FFC400")
+
+
 def write_openclaw_config(path, domain, port):
     if not path.exists():
         write_text_lf(
@@ -128,6 +164,7 @@ def write_openclaw_config(path, domain, port):
         sys.exit(f"gateway precisa ser um objeto JSON: {path}")
 
     gateway["trustedProxies"] = [str(trusted_proxy_ip)]
+    ensure_browser_config(config)
 
     control_ui = gateway.setdefault("controlUi", {})
     if not isinstance(control_ui, dict):

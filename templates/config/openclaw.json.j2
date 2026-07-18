@@ -16,5 +16,26 @@
         "http://localhost:{{ port }}"
       ]
     }
+  },
+  "browser": {
+    "enabled": true,
+    "evaluateEnabled": true,
+    "defaultProfile": "openclaw",
+    "headless": true,
+    "noSandbox": true,
+    "localLaunchTimeoutMs": 30000,
+    "localCdpReadyTimeoutMs": 15000,
+    "actionTimeoutMs": 90000,
+    "extraArgs": [
+      "--disable-dev-shm-usage"
+    ],
+    "profiles": {
+      "openclaw": {
+        "driver": "openclaw",
+        "cdpPort": 18800,
+        "headless": true,
+        "color": "#FFC400"
+      }
+    }
   }
 }

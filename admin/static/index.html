@@ -115,7 +115,7 @@
       <section class="browser-config" aria-label="Configuração de navegador">
         <div>
           <h2>Navegador por instância</h2>
-          <p>Configura o OpenClaw para usar uma sessão existente do Edge no host da instância.</p>
+          <p>Configura o navegador gerenciado do OpenClaw com perfil persistente para automações e logins por instância.</p>
         </div>
         <form id="browserConfigForm" class="browser-config-form">
           <label>
@@ -124,19 +124,19 @@
           </label>
           <label>
             Perfil
-            <input id="browserProfileName" name="profileName" type="text" autocomplete="off" value="edge" />
+            <input id="browserProfileName" name="profileName" type="text" autocomplete="off" value="openclaw" />
           </label>
           <label>
-            Diretório do perfil
-            <input id="browserUserDataDir" name="userDataDir" type="text" autocomplete="off" value="~/.config/microsoft-edge" />
+            Diretório do perfil externo
+            <input id="browserUserDataDir" name="userDataDir" type="text" autocomplete="off" placeholder="Opcional para sessão existente" />
           </label>
           <label>
-            CDP URL
-            <input id="browserCdpUrl" name="cdpUrl" type="url" autocomplete="off" value="http://127.0.0.1:9222" />
+            CDP URL externa
+            <input id="browserCdpUrl" name="cdpUrl" type="url" autocomplete="off" placeholder="Opcional, exemplo http://127.0.0.1:9222" />
           </label>
           <label class="checkbox-label">
-            <input id="browserAttachOnly" name="attachOnly" type="checkbox" checked />
-            Usar apenas sessão já aberta
+            <input id="browserAttachOnly" name="attachOnly" type="checkbox" />
+            Usar sessão existente externa
           </label>
           <button id="saveBrowserConfig" type="submit">Salvar e aplicar</button>
           <button id="refreshBrowserConfig" type="button">Ver configuração</button>
