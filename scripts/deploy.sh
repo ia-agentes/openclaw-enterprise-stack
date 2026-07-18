@@ -22,9 +22,17 @@ echo "===================================="
 echo "Build OpenClaw"
 echo "===================================="
 
+OPENCLAW_BUILD_CONTEXT="$BASE/vendor/openclaw"
+if [ -d "$BASE/.cache/openclaw-update/source" ]; then
+    OPENCLAW_BUILD_CONTEXT="$BASE/.cache/openclaw-update/source"
+fi
+
+echo "Build context: $OPENCLAW_BUILD_CONTEXT"
+
 docker build \
+    --build-arg OPENCLAW_INSTALL_BROWSER=1 \
     -t openclaw:latest \
-    "$BASE/vendor/openclaw"
+    "$OPENCLAW_BUILD_CONTEXT"
 
 for dir in "$BASE"/instances/*; do
     [ -d "$dir" ] || continue
@@ -45,7 +53,7 @@ for dir in "$BASE"/instances/*; do
     docker compose \
         -f "$dir/docker-compose.yml" \
         --env-file "$dir/.env" \
-        up -d
+        up -d --force-recreate
 done
 
 echo

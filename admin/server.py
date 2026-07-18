@@ -954,7 +954,11 @@ def build_openclaw_latest_image():
     docker_pull_image("docker", "27-cli", timeout=900)
     return run_helper_container(
         "docker:27-cli",
-        ["sh", "-lc", "docker build -t openclaw:latest /workspace/.cache/openclaw-update/source"],
+        [
+            "sh",
+            "-lc",
+            "docker build --build-arg OPENCLAW_INSTALL_BROWSER=1 -t openclaw:latest /workspace/.cache/openclaw-update/source",
+        ],
         binds=[
             "/var/run/docker.sock:/var/run/docker.sock",
             f"{HOST_ROOT}:/workspace",
