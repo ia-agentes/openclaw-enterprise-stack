@@ -1,0 +1,13 @@
+{
+  "name": "openclaw-agenda-digital-tools",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "discover": "node discover-db.mjs",
+    "run:v1": "node agenda-digital-v1.mjs"
+  },
+  "dependencies": {
+    "mssql": "11.0.1",
+    "sharp": "0.34.3"
+  }
+}
