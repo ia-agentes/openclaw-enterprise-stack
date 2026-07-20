@@ -364,7 +364,7 @@ def normalize_tickets_db_payload(payload):
     database = str(payload.get("database", "")).strip()
     user = str(payload.get("user", "")).strip()
     password = str(payload.get("password", "")).strip()
-    safe_view = str(payload.get("safeView", "")).strip() or "vw_chamados_agent"
+    safe_view = str(payload.get("safeView", "")).strip()
     sslmode = str(payload.get("sslmode", "prefer")).strip().lower() or "prefer"
 
     if db_type not in TICKETS_DB_TYPES:
@@ -385,7 +385,7 @@ def normalize_tickets_db_payload(payload):
     if not user or len(user) > 128 or any(char.isspace() for char in user):
         raise ValueError("usuario do banco invalido")
     if safe_view and not DB_VIEW_RE.match(safe_view):
-        raise ValueError("view/tabela segura invalida")
+        raise ValueError("tabela/view permitida invalida")
     if sslmode not in TICKETS_SSL_MODES:
         raise ValueError("modo SSL invalido")
 
@@ -422,7 +422,7 @@ def save_tickets_db_config(instance, payload):
 def test_tickets_db_reachability(instance):
     summary = tickets_db_summary(instance)
     if not summary["configured"]:
-        raise ValueError("configure host, porta, banco, usuario e view segura antes de testar")
+        raise ValueError("configure host, porta, banco, usuario e tabela/view permitida antes de testar")
     started = time.time()
     try:
         with socket.create_connection((summary["host"], int(summary["port"])), timeout=8):

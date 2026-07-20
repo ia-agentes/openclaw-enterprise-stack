@@ -434,7 +434,7 @@ function fillBrowserInstances(instances) {
 }
 
 function fillTicketsDbInstances(instances) {
-  const selected = ticketsDbInstance.value || (instances.some((item) => item.name === "chamados") ? "chamados" : "");
+  const selected = ticketsDbInstance.value || (instances.some((item) => item.name === "te") ? "te" : "");
   ticketsDbInstance.innerHTML = instances
     .map((item) => `<option value="${escapeAttribute(item.name)}">${escapeHtml(title(item.name))}</option>`)
     .join("");
@@ -964,7 +964,7 @@ function hydrateTicketsDbForm(data = {}) {
   ticketsDbName.value = data.database || "";
   ticketsDbUser.value = data.user || "";
   ticketsDbPassword.value = "";
-  ticketsDbSafeView.value = data.safeView || "vw_chamados_agent";
+  ticketsDbSafeView.value = data.safeView || "";
   ticketsDbSslMode.value = data.sslmode || "prefer";
   syncTicketsDbPort();
 }
@@ -977,7 +977,7 @@ function ticketsDbPayload() {
     database: ticketsDbName.value.trim(),
     user: ticketsDbUser.value.trim(),
     password: ticketsDbPassword.value.trim(),
-    safeView: ticketsDbSafeView.value.trim() || "vw_chamados_agent",
+    safeView: ticketsDbSafeView.value.trim(),
     sslmode: ticketsDbSslMode.value,
   };
 }
@@ -987,23 +987,23 @@ async function saveTicketsDbSettings(event) {
   const instance = ticketsDbInstance.value;
   const payload = ticketsDbPayload();
   if (!instance || !payload.host || !payload.database || !payload.user || !payload.safeView) {
-    setNotice("Informe instância, host, banco, usuário de leitura e view segura.");
+    setNotice("Informe instância, host, banco, usuário de leitura e tabela/view permitida.");
     return;
   }
   const passwordText = payload.password ? "A senha informada será salva no .env da instância." : "A senha salva, se existir, será preservada.";
   const message =
-    `Salvar conexão somente leitura de chamados em ${title(instance)}?\n\n` +
-    `${passwordText}\nA Diana deverá consultar apenas a view/tabela segura configurada.`;
+    `Salvar acesso somente leitura a dados em ${title(instance)}?\n\n` +
+    `${passwordText}\nO agente deverá consultar apenas a tabela/view permitida configurada.`;
   if (!window.confirm(message)) return;
 
   saveTicketsDbConfig.disabled = true;
-  setNotice(`Salvando banco de chamados em ${title(instance)}...`);
+  setNotice(`Salvando acesso a dados em ${title(instance)}...`);
   try {
     const data = await apiJsonPost(`/api/instances/${encodeURIComponent(instance)}/tickets-db`, payload);
     ticketsDbPassword.value = "";
     hydrateTicketsDbForm(data);
     renderTicketsDbPanel(data);
-    setNotice(`Banco de chamados salvo em ${title(instance)}.`);
+    setNotice(`Acesso a dados salvo em ${title(instance)}.`);
   } catch (error) {
     setNotice(readableError(error));
   } finally {
@@ -1018,14 +1018,14 @@ async function testTicketsDbSettings() {
     return;
   }
   testTicketsDbConfig.disabled = true;
-  setNotice(`Testando alcance do banco de chamados em ${title(instance)}...`);
+  setNotice(`Testando alcance do banco de dados em ${title(instance)}...`);
   try {
     const data = await apiPost(`/api/instances/${encodeURIComponent(instance)}/tickets-db/test`);
     renderTicketsDbPanel(data);
     setNotice(
       data.reachable
-        ? `Banco de chamados alcançável em ${title(instance)}.`
-        : `Banco de chamados configurado, mas host/porta não responderam em ${title(instance)}.`,
+        ? `Banco de dados alcançável em ${title(instance)}.`
+        : `Acesso a dados configurado, mas host/porta não responderam em ${title(instance)}.`,
     );
   } catch (error) {
     setNotice(readableError(error));
@@ -1053,14 +1053,14 @@ function renderTicketsDbPanel(data = {}) {
         <div><span>Porta</span><code>${escapeHtml(data.port || "-")}</code></div>
         <div><span>Banco</span><code>${escapeHtml(data.database || "-")}</code></div>
         <div><span>Usuário</span><code>${escapeHtml(data.user || "-")}</code></div>
-        <div><span>View segura</span><code>${escapeHtml(data.safeView || "-")}</code></div>
+        <div><span>Tabela/View</span><code>${escapeHtml(data.safeView || "-")}</code></div>
         <div><span>SSL</span><code>${escapeHtml(data.sslmode || "-")}</code></div>
       </div>
     </div>
     ${
       data.error
         ? `<div class="delivery-alert"><strong>Alerta de alcance</strong><span>${escapeHtml(data.error)}</span></div>`
-        : '<div class="empty-state">Fase 1 pronta: a próxima etapa é mapear a view segura e criar consultas somente leitura.</div>'
+        : '<div class="empty-state">Fase 1 pronta: a próxima etapa é mapear os campos da tabela/view permitida e criar consultas somente leitura.</div>'
     }
   `;
 }

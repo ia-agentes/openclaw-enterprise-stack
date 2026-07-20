@@ -145,10 +145,10 @@
         <div id="browserConfigPanel" class="browser-panel hidden"></div>
       </section>
 
-      <section class="tickets-db-config" aria-label="Banco de Chamados">
+      <section class="tickets-db-config" aria-label="Acessos a dados por instância">
         <div>
-          <h2>Banco de Chamados</h2>
-          <p>Prepara a Diana para consultar chamados por uma conexão somente leitura e uma view segura.</p>
+          <h2>Acessos a dados por instância</h2>
+          <p>Configura conexões somente leitura e limita quais tabelas ou views cada agente pode consultar.</p>
         </div>
         <form id="ticketsDbConfigForm" class="tickets-db-config-form">
           <label>
@@ -174,19 +174,19 @@
           </label>
           <label>
             Banco
-            <input id="ticketsDbName" name="database" type="text" autocomplete="off" placeholder="chamados" />
+            <input id="ticketsDbName" name="database" type="text" autocomplete="off" placeholder="dw_santoanjo" />
           </label>
           <label>
             Usuário leitura
-            <input id="ticketsDbUser" name="user" type="text" autocomplete="off" placeholder="openclaw_ro" />
+            <input id="ticketsDbUser" name="user" type="text" autocomplete="off" placeholder="URead002" />
           </label>
           <label>
             Senha
             <input id="ticketsDbPassword" name="password" type="password" autocomplete="off" placeholder="não exibida depois de salva" />
           </label>
           <label>
-            View segura
-            <input id="ticketsDbSafeView" name="safeView" type="text" autocomplete="off" value="vw_chamados_agent" />
+            Tabela/View permitida
+            <input id="ticketsDbSafeView" name="safeView" type="text" autocomplete="off" placeholder="fato_agenda_digital" />
           </label>
           <label>
             SSL
