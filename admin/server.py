@@ -75,6 +75,7 @@ TICKETS_DB_TYPES = {
     "mariadb": 3306,
 }
 TICKETS_SSL_MODES = {"prefer", "require", "disable", "verify-ca", "verify-full"}
+TICKETS_DB_SCOPES = {"single", "list", "all"}
 
 
 class UnixHTTPConnection(http.client.HTTPConnection):
@@ -334,7 +335,10 @@ def tickets_db_summary(instance):
     port = env.get("TICKETS_DB_PORT", "").strip()
     database = env.get("TICKETS_DB_NAME", "").strip()
     user = env.get("TICKETS_DB_USER", "").strip()
+    scope = env.get("TICKETS_DB_SCOPE", "").strip().lower() or "single"
     view = env.get("TICKETS_DB_SAFE_VIEW", "").strip()
+    if view == "*":
+        scope = "all"
     sslmode = env.get("TICKETS_DB_SSLMODE", "").strip() or "prefer"
     password_saved = bool(env.get("TICKETS_DB_PASSWORD", ""))
     configured = bool(db_type and host and port and database and user and view)
@@ -347,6 +351,7 @@ def tickets_db_summary(instance):
         "port": port,
         "database": database,
         "user": user,
+        "scope": scope,
         "safeView": view,
         "sslmode": sslmode,
         "passwordSaved": password_saved,
@@ -364,6 +369,7 @@ def normalize_tickets_db_payload(payload):
     database = str(payload.get("database", "")).strip()
     user = str(payload.get("user", "")).strip()
     password = str(payload.get("password", "")).strip()
+    scope = str(payload.get("scope", "single")).strip().lower() or "single"
     safe_view = str(payload.get("safeView", "")).strip()
     sslmode = str(payload.get("sslmode", "prefer")).strip().lower() or "prefer"
 
@@ -384,8 +390,22 @@ def normalize_tickets_db_payload(payload):
         raise ValueError("nome do banco invalido")
     if not user or len(user) > 128 or any(char.isspace() for char in user):
         raise ValueError("usuario do banco invalido")
-    if safe_view and not DB_VIEW_RE.match(safe_view):
-        raise ValueError("tabela/view permitida invalida")
+    if scope not in TICKETS_DB_SCOPES:
+        raise ValueError("escopo de dados invalido")
+    if scope == "all":
+        safe_view = "*"
+    elif scope == "single":
+        if not safe_view or not DB_VIEW_RE.match(safe_view):
+            raise ValueError("tabela/view permitida invalida")
+    else:
+        allowed_items = [item.strip() for item in safe_view.split(",") if item.strip()]
+        if not allowed_items:
+            raise ValueError("informe ao menos uma tabela/view permitida")
+        if len(allowed_items) > 100:
+            raise ValueError("lista de tabelas/views excede o limite")
+        if any(not DB_VIEW_RE.match(item) for item in allowed_items):
+            raise ValueError("lista de tabelas/views contem item invalido")
+        safe_view = ",".join(allowed_items)
     if sslmode not in TICKETS_SSL_MODES:
         raise ValueError("modo SSL invalido")
 
@@ -396,6 +416,7 @@ def normalize_tickets_db_payload(payload):
         "database": database,
         "user": user,
         "password": password,
+        "scope": scope,
         "safeView": safe_view,
         "sslmode": sslmode,
     }
@@ -414,6 +435,7 @@ def save_tickets_db_config(instance, payload):
         write_env_value(env_path, "TICKETS_DB_USER", config["user"])
         if config["password"]:
             write_env_value(env_path, "TICKETS_DB_PASSWORD", config["password"])
+        write_env_value(env_path, "TICKETS_DB_SCOPE", config["scope"])
         write_env_value(env_path, "TICKETS_DB_SAFE_VIEW", config["safeView"])
         write_env_value(env_path, "TICKETS_DB_SSLMODE", config["sslmode"])
     return tickets_db_summary(instance)

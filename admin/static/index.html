@@ -185,8 +185,16 @@
             <input id="ticketsDbPassword" name="password" type="password" autocomplete="off" placeholder="não exibida depois de salva" />
           </label>
           <label>
-            Tabela/View permitida
-            <input id="ticketsDbSafeView" name="safeView" type="text" autocomplete="off" placeholder="fato_agenda_digital" />
+            Escopo
+            <select id="ticketsDbScope" name="scope">
+              <option value="single">Somente tabela/view informada</option>
+              <option value="list">Lista personalizada</option>
+              <option value="all">Todas as tabelas/views do banco</option>
+            </select>
+          </label>
+          <label>
+            Tabelas/Views permitidas
+            <input id="ticketsDbSafeView" name="safeView" type="text" autocomplete="off" placeholder="fato_agenda_digital ou fato_agenda,dbo.vw_alunos" />
           </label>
           <label>
             SSL

@@ -44,6 +44,7 @@ const ticketsDbPort = document.querySelector("#ticketsDbPort");
 const ticketsDbName = document.querySelector("#ticketsDbName");
 const ticketsDbUser = document.querySelector("#ticketsDbUser");
 const ticketsDbPassword = document.querySelector("#ticketsDbPassword");
+const ticketsDbScope = document.querySelector("#ticketsDbScope");
 const ticketsDbSafeView = document.querySelector("#ticketsDbSafeView");
 const ticketsDbSslMode = document.querySelector("#ticketsDbSslMode");
 const saveTicketsDbConfig = document.querySelector("#saveTicketsDbConfig");
@@ -128,6 +129,7 @@ refreshTicketsDbConfig.addEventListener("click", () => loadTicketsDbConfig());
 testTicketsDbConfig.addEventListener("click", testTicketsDbSettings);
 ticketsDbInstance.addEventListener("change", () => loadTicketsDbConfig());
 ticketsDbType.addEventListener("change", syncTicketsDbPort);
+ticketsDbScope.addEventListener("change", syncTicketsDbScope);
 saveTelegramConfig.addEventListener("click", saveTelegramSettings);
 refreshTelegramPairings.addEventListener("click", refreshTelegramStatus);
 approveTelegramPairing.addEventListener("click", approveTelegramCode);
@@ -964,9 +966,28 @@ function hydrateTicketsDbForm(data = {}) {
   ticketsDbName.value = data.database || "";
   ticketsDbUser.value = data.user || "";
   ticketsDbPassword.value = "";
+  ticketsDbScope.value = data.scope || (data.safeView === "*" ? "all" : "single");
   ticketsDbSafeView.value = data.safeView || "";
   ticketsDbSslMode.value = data.sslmode || "prefer";
   syncTicketsDbPort();
+  syncTicketsDbScope();
+}
+
+function syncTicketsDbScope() {
+  const scope = ticketsDbScope.value || "single";
+  if (scope === "all") {
+    ticketsDbSafeView.value = "*";
+    ticketsDbSafeView.disabled = true;
+    ticketsDbSafeView.placeholder = "Todas as tabelas/views do banco";
+  } else if (scope === "list") {
+    ticketsDbSafeView.disabled = false;
+    if (ticketsDbSafeView.value === "*") ticketsDbSafeView.value = "";
+    ticketsDbSafeView.placeholder = "fato_agenda_digital,dbo.vw_alunos";
+  } else {
+    ticketsDbSafeView.disabled = false;
+    if (ticketsDbSafeView.value === "*") ticketsDbSafeView.value = "";
+    ticketsDbSafeView.placeholder = "fato_agenda_digital";
+  }
 }
 
 function ticketsDbPayload() {
@@ -977,6 +998,7 @@ function ticketsDbPayload() {
     database: ticketsDbName.value.trim(),
     user: ticketsDbUser.value.trim(),
     password: ticketsDbPassword.value.trim(),
+    scope: ticketsDbScope.value,
     safeView: ticketsDbSafeView.value.trim(),
     sslmode: ticketsDbSslMode.value,
   };
@@ -985,15 +1007,17 @@ function ticketsDbPayload() {
 async function saveTicketsDbSettings(event) {
   event.preventDefault();
   const instance = ticketsDbInstance.value;
+  syncTicketsDbScope();
   const payload = ticketsDbPayload();
   if (!instance || !payload.host || !payload.database || !payload.user || !payload.safeView) {
-    setNotice("Informe instância, host, banco, usuário de leitura e tabela/view permitida.");
+    setNotice("Informe instância, host, banco, usuário de leitura e escopo de dados.");
     return;
   }
   const passwordText = payload.password ? "A senha informada será salva no .env da instância." : "A senha salva, se existir, será preservada.";
+  const scopeText = dataScopeText(payload.scope);
   const message =
     `Salvar acesso somente leitura a dados em ${title(instance)}?\n\n` +
-    `${passwordText}\nO agente deverá consultar apenas a tabela/view permitida configurada.`;
+    `${passwordText}\nEscopo: ${scopeText}.\nO agente deverá respeitar esse escopo nas consultas.`;
   if (!window.confirm(message)) return;
 
   saveTicketsDbConfig.disabled = true;
@@ -1038,11 +1062,13 @@ function renderTicketsDbPanel(data = {}) {
   const status = data.reachable === true ? "Alcançável" : data.configured ? "Configurado" : "Pendente";
   const statusClass = data.reachable === true ? "ok" : data.configured ? "warn" : "idle";
   const password = data.passwordSaved ? "senha salva" : "sem senha salva";
+  const scope = data.scope || (data.safeView === "*" ? "all" : "single");
   ticketsDbConfigPanel.classList.remove("hidden");
   ticketsDbConfigPanel.innerHTML = `
     <div class="oauth-status">
       ${pill(statusClass, status)}
       <span>${escapeHtml(data.mode || "read-only")}</span>
+      ${pill(scope === "all" ? "warn" : "ok", dataScopeText(scope))}
       <span>${escapeHtml(password)}</span>
       ${data.latencyMs !== null && data.latencyMs !== undefined ? `<span>${escapeHtml(data.latencyMs)} ms</span>` : ""}
     </div>
@@ -1053,16 +1079,28 @@ function renderTicketsDbPanel(data = {}) {
         <div><span>Porta</span><code>${escapeHtml(data.port || "-")}</code></div>
         <div><span>Banco</span><code>${escapeHtml(data.database || "-")}</code></div>
         <div><span>Usuário</span><code>${escapeHtml(data.user || "-")}</code></div>
-        <div><span>Tabela/View</span><code>${escapeHtml(data.safeView || "-")}</code></div>
+        <div><span>Escopo</span><code>${escapeHtml(dataScopeText(scope))}</code></div>
+        <div><span>Tabelas/Views</span><code>${escapeHtml(data.safeView || "-")}</code></div>
         <div><span>SSL</span><code>${escapeHtml(data.sslmode || "-")}</code></div>
       </div>
     </div>
+    ${
+      scope === "all"
+        ? '<div class="delivery-alert"><strong>Acesso amplo habilitado</strong><span>O usuário é somente leitura, mas o agente poderá consultar qualquer tabela ou view que esse usuário enxergue neste banco.</span></div>'
+        : ""
+    }
     ${
       data.error
         ? `<div class="delivery-alert"><strong>Alerta de alcance</strong><span>${escapeHtml(data.error)}</span></div>`
         : '<div class="empty-state">Fase 1 pronta: a próxima etapa é mapear os campos da tabela/view permitida e criar consultas somente leitura.</div>'
     }
   `;
+}
+
+function dataScopeText(value) {
+  if (value === "all") return "Todas as tabelas/views";
+  if (value === "list") return "Lista personalizada";
+  return "Tabela/view única";
 }
 
 async function saveTelegramSettings() {
