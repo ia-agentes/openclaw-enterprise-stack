@@ -565,6 +565,19 @@ def ensure_openai_oauth_preference(instance):
     write_json_file(config_path, config)
 
 
+def apply_openai_oauth_runtime_order(instance):
+    output = docker_exec(
+        f"oces-{instance}",
+        [
+            "sh",
+            "-lc",
+            "if node dist/index.js models auth list | grep -q 'openai:default .*openai/oauth'; then node dist/index.js models auth order set --provider openai openai:default openai:api; else echo 'openai oauth profile not found'; fi",
+        ],
+        timeout=45,
+    )
+    return ANSI_RE.sub("", output).replace("\r", "")
+
+
 def access_meta_index(meta):
     indexed = {}
     for item in meta.get("items", []):
@@ -1823,6 +1836,11 @@ console.log("__OCES_JSON__" + JSON.stringify({
     if json_start >= 0:
         payload = payload[json_start:]
     data, _ = json.JSONDecoder().raw_decode(payload or "{}")
+    if data.get("exitCode") == 0 and not data.get("running"):
+        try:
+            data["authOrder"] = apply_openai_oauth_runtime_order(instance)
+        except Exception as exc:
+            data["authOrderError"] = str(exc)
     data.update({"ok": True, "instance": instance, "action": "openai-oauth-status"})
     return data
 
