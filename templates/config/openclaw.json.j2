@@ -17,6 +17,24 @@
       ]
     }
   },
+  "auth": {
+    "profiles": {
+      "openai:default": {
+        "provider": "openai",
+        "mode": "oauth"
+      },
+      "openai:api": {
+        "provider": "openai",
+        "mode": "api_key"
+      }
+    },
+    "order": {
+      "openai": [
+        "openai:default",
+        "openai:api"
+      ]
+    }
+  },
   "browser": {
     "enabled": true,
     "evaluateEnabled": true,

@@ -539,6 +539,32 @@ def write_access_meta(instance, items):
     )
 
 
+def ensure_openai_oauth_preference(instance):
+    config_path = instance_config_path(instance)
+    config = read_json_file(config_path, {})
+    if not isinstance(config, dict):
+        config = {}
+
+    auth = config.setdefault("auth", {})
+    if not isinstance(auth, dict):
+        config["auth"] = {}
+        auth = config["auth"]
+
+    profiles = auth.setdefault("profiles", {})
+    if not isinstance(profiles, dict):
+        auth["profiles"] = {}
+        profiles = auth["profiles"]
+    profiles.setdefault("openai:default", {"provider": "openai", "mode": "oauth"})
+    profiles.setdefault("openai:api", {"provider": "openai", "mode": "api_key"})
+
+    order = auth.setdefault("order", {})
+    if not isinstance(order, dict):
+        auth["order"] = {}
+        order = auth["order"]
+    order["openai"] = ["openai:default", "openai:api"]
+    write_json_file(config_path, config)
+
+
 def access_meta_index(meta):
     indexed = {}
     for item in meta.get("items", []):
@@ -1056,6 +1082,7 @@ def configure_openai_key(instance, payload):
     with CREATE_LOCK:
         env_path = ROOT / "instances" / instance / ".env"
         write_env_value(env_path, "OPENAI_API_KEY", api_key)
+        ensure_openai_oauth_preference(instance)
         container_id = recreate_openclaw_container(instance)
     return {"ok": True, "instance": instance, "action": "openai-key", "containerId": container_id}
 

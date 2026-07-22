@@ -139,6 +139,26 @@ def ensure_browser_config(config):
     openclaw_profile.setdefault("color", "#FFC400")
 
 
+def ensure_openai_auth_preference(config):
+    auth = config.setdefault("auth", {})
+    if not isinstance(auth, dict):
+        config["auth"] = {}
+        auth = config["auth"]
+
+    profiles = auth.setdefault("profiles", {})
+    if not isinstance(profiles, dict):
+        auth["profiles"] = {}
+        profiles = auth["profiles"]
+    profiles.setdefault("openai:default", {"provider": "openai", "mode": "oauth"})
+    profiles.setdefault("openai:api", {"provider": "openai", "mode": "api_key"})
+
+    order = auth.setdefault("order", {})
+    if not isinstance(order, dict):
+        auth["order"] = {}
+        order = auth["order"]
+    order["openai"] = ["openai:default", "openai:api"]
+
+
 def write_openclaw_config(path, domain, port):
     if not path.exists():
         write_text_lf(
@@ -165,6 +185,7 @@ def write_openclaw_config(path, domain, port):
 
     gateway["trustedProxies"] = [str(trusted_proxy_ip)]
     ensure_browser_config(config)
+    ensure_openai_auth_preference(config)
 
     control_ui = gateway.setdefault("controlUi", {})
     if not isinstance(control_ui, dict):
