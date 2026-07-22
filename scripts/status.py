@@ -332,7 +332,7 @@ def summarize_channel(name, channel, accounts):
     if not channel:
         return channel_absent()
 
-    account = accounts[0] if isinstance(accounts, list) and accounts else {}
+    account = select_channel_account(accounts)
     probe = channel.get("probe") or account.get("probe") or {}
     bot = probe.get("bot") or {}
     summary = {
@@ -356,6 +356,21 @@ def summarize_channel(name, channel, accounts):
         summary["jid"] = self_info.get("jid")
         summary["e164"] = self_info.get("e164")
     return summary
+
+
+def select_channel_account(accounts):
+    if not isinstance(accounts, list) or not accounts:
+        return {}
+    for account in accounts:
+        if isinstance(account, dict) and account.get("connected") is True:
+            return account
+    for account in accounts:
+        if isinstance(account, dict) and account.get("linked") is True:
+            return account
+    for account in accounts:
+        if isinstance(account, dict) and account.get("running") is True:
+            return account
+    return accounts[0] if isinstance(accounts[0], dict) else {}
 
 
 def channel_absent():
