@@ -263,6 +263,10 @@ def openclaw_models(container):
             "token": False,
             "effective": None,
         },
+        "chatgpt": {
+            "loggedIn": False,
+            "source": None,
+        },
         "error": None,
     }
     if not result["ok"]:
@@ -284,6 +288,8 @@ def openclaw_models(container):
             )
             data["openai"]["oauth"] = "oauth=" in line and "oauth=0" not in line
             data["openai"]["token"] = "token=" in line and "token=0" not in line
+            data["chatgpt"]["loggedIn"] = data["openai"]["oauth"]
+            data["chatgpt"]["source"] = "openai-oauth" if data["openai"]["oauth"] else None
     return data
 
 

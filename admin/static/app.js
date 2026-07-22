@@ -504,6 +504,7 @@ function renderRow(item) {
       <td>${escapeHtml(versionText(item))}</td>
       <td>${escapeHtml(modelText(item))}</td>
       <td>${openAiPill(models.openai)}</td>
+      <td>${chatGptPill(models.chatgpt, models.openai)}</td>
       <td>${channelPill(channels.telegram)}</td>
       <td>${channelPill(channels.whatsapp)}</td>
       <td>
@@ -1782,8 +1783,13 @@ function gatewayPill(item) {
 
 function openAiPill(openai = {}) {
   if (openai.apiKey) return pill("ok", "API key");
-  if (openai.oauth) return pill("warn", "OAuth");
   return pill("bad", "Sem auth");
+}
+
+function chatGptPill(chatgpt = {}, openai = {}) {
+  if (chatgpt.loggedIn || openai.oauth) return pill("ok", "Logado");
+  if (chatgpt.error) return pill("warn", "Erro");
+  return pill("idle", "Ausente");
 }
 
 function channelPill(channel = {}) {
